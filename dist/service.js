@@ -23,6 +23,9 @@
 import { FrameworkDetector } from './detector.js';
 import { PluginManager } from './plugins/base.js';
 import { ElectronPlugin } from './plugins/electron/index.js';
+import { BrowserPlugin } from './plugins/browser/index.js';
+import { ChromeExtPlugin } from './plugins/chrome-ext/index.js';
+import { ExtensionWSServer } from './plugins/chrome-ext/ws-server.js';
 import { WinUIAPlugin } from './plugins/win-uia/index.js';
 import { QtPlugin } from './plugins/qt/index.js';
 import { GtkPlugin } from './plugins/gtk/index.js';
@@ -47,6 +50,8 @@ export class UABService {
     cache;
     permissions;
     chainExecutor;
+    // Phase 5: Chrome Extension bridge
+    extensionServer;
     constructor() {
         this.detector = new FrameworkDetector();
         this.pluginManager = new PluginManager();
@@ -56,6 +61,8 @@ export class UABService {
         this.cache = new ElementCache();
         this.permissions = new PermissionManager();
         this.chainExecutor = new ChainExecutor(this);
+        // Phase 5: Chrome Extension WebSocket bridge
+        this.extensionServer = new ExtensionWSServer();
     }
     get running() { return this._running; }
     /**
@@ -67,7 +74,20 @@ export class UABService {
         // Ensure screenshots directory exists
         const fs = await import('fs');
         fs.mkdirSync('data/screenshots', { recursive: true });
+        // Start Chrome Extension WebSocket bridge (non-blocking)
+        try {
+            await this.extensionServer.start();
+            log.info('Extension WS bridge ready on port 8787');
+        }
+        catch (err) {
+            log.warn('Extension WS bridge failed to start (port in use?)', {
+                error: err.message,
+            });
+        }
         // Register framework plugins (priority order: specific -> generic)
+        // ChromeExtPlugin is highest priority for browsers — no relaunch needed!
+        this.pluginManager.register(new ChromeExtPlugin(this.extensionServer)); // Extension bridge (no relaunch)
+        this.pluginManager.register(new BrowserPlugin()); // CDP -- fallback (needs relaunch)
         this.pluginManager.register(new ElectronPlugin()); // CDP -- best for Electron
         this.pluginManager.register(new OfficePlugin()); // Office (Word/Excel/PPT) + document content
         this.pluginManager.register(new QtPlugin()); // Qt via UIA
@@ -80,6 +100,7 @@ export class UABService {
         this._running = true;
         log.info('UAB service started', {
             frameworks: this.pluginManager.getRegisteredFrameworks(),
+            extensionBridge: this.extensionServer.connected,
         });
     }
     /**
@@ -90,6 +111,7 @@ export class UABService {
             return;
         await this.connectionMgr.shutdown();
         await this.router.disconnectAll();
+        await this.extensionServer.stop();
         this.cache.clear();
         this.permissions.clear();
         this._running = false;

@@ -20,6 +20,7 @@
  *   await uab.act(pid, buttons[0].id, 'click');
  *   await uab.stop();                           // Cleanup
  */
+import { ExtensionWSServer } from './plugins/chrome-ext/ws-server.js';
 import { PermissionManager } from './permissions.js';
 import { type ChainDefinition, type ChainResult } from './chains.js';
 import type { DetectedApp, UIElement, ElementSelector, ActionType, ActionParams, ActionResult, AppState } from './types.js';
@@ -32,6 +33,7 @@ export declare class UABService {
     private cache;
     readonly permissions: PermissionManager;
     private chainExecutor;
+    readonly extensionServer: ExtensionWSServer;
     constructor();
     get running(): boolean;
     /**

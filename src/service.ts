@@ -23,6 +23,9 @@
 
 import { FrameworkDetector } from './detector.js';
 import { PluginManager } from './plugins/base.js';
+import { ChromeExtPlugin } from './plugins/chrome-ext/index.js';
+import { ExtensionWSServer } from './plugins/chrome-ext/ws-server.js';
+import { BrowserPlugin } from './plugins/browser/index.js';
 import { ElectronPlugin } from './plugins/electron/index.js';
 import { WinUIAPlugin } from './plugins/win-uia/index.js';
 import { QtPlugin } from './plugins/qt/index.js';
@@ -50,6 +53,9 @@ export class UABService {
   private router: ControlRouter;
   private _running = false;
 
+  // Phase 5: Chrome Extension Bridge
+  readonly extensionServer: ExtensionWSServer;
+
   // Phase 4: Production hardening modules
   private connectionMgr: ConnectionManager;
   private cache: ElementCache;
@@ -60,6 +66,7 @@ export class UABService {
     this.detector = new FrameworkDetector();
     this.pluginManager = new PluginManager();
     this.router = new ControlRouter(this.pluginManager);
+    this.extensionServer = new ExtensionWSServer();
 
     // Phase 4 modules
     this.connectionMgr = new ConnectionManager(this.router);
@@ -80,7 +87,12 @@ export class UABService {
     const fs = await import('fs');
     fs.mkdirSync('data/screenshots', { recursive: true });
 
+    // Start the Chrome Extension WebSocket bridge
+    await this.extensionServer.start();
+
     // Register framework plugins (priority order: specific -> generic)
+    this.pluginManager.register(new ChromeExtPlugin(this.extensionServer)); // Browser extension (no relaunch)
+    this.pluginManager.register(new BrowserPlugin());     // Browser CDP fallback (needs relaunch)
     this.pluginManager.register(new ElectronPlugin());    // CDP -- best for Electron
     this.pluginManager.register(new OfficePlugin());      // Office (Word/Excel/PPT) + document content
     this.pluginManager.register(new QtPlugin());          // Qt via UIA
@@ -103,6 +115,7 @@ export class UABService {
    */
   async stop(): Promise<void> {
     if (!this._running) return;
+    await this.extensionServer.stop();
     await this.connectionMgr.shutdown();
     await this.router.disconnectAll();
     this.cache.clear();

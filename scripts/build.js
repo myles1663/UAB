@@ -87,6 +87,10 @@ const requiredFiles = [
   'dist/permissions.js',
   'dist/logger.js',
   'dist/plugins/base.js',
+  'dist/plugins/chrome-ext/index.js',
+  'dist/plugins/chrome-ext/ws-server.js',
+  'dist/plugins/chrome-ext/installer.js',
+  'dist/plugins/browser/index.js',
   'dist/plugins/electron/index.js',
   'dist/plugins/win-uia/index.js',
 ];

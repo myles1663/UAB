@@ -12,6 +12,8 @@ AI agents need to control local applications, but most apps expose no programmat
 
 | Framework | Plugin | Apps Covered |
 |-----------|--------|-------------|
+| **Chrome/Edge/Brave** | Extension Bridge (WebSocket) | Any Chromium browser — tabs, cookies, DOM, storage, JS exec |
+| **Chrome/Edge/Brave** | CDP Fallback | Same browsers, requires `--remote-debugging-port` |
 | **Electron** | Chrome DevTools Protocol | VS Code, Slack, Discord, Notion, Obsidian, Spotify, Teams |
 | **Qt 5/6** | UIA Bridge | VLC, Telegram Desktop, OBS Studio, VirtualBox, Wireshark |
 | **GTK 3/4** | UIA Bridge | GIMP, Inkscape, GNOME apps |
@@ -135,6 +137,66 @@ const state: AppState = await uab.state(pid);
 // { window: { title, size, position, focused }, activeElement, modals, menus }
 ```
 
+## Chrome Extension Bridge
+
+UAB includes a Chrome Extension that connects to your running browser via WebSocket — **no browser relaunch required**. This is the preferred method for browser automation.
+
+### How It Works
+
+```
+┌────────────────────┐    WebSocket     ┌────────────────────┐
+│   UAB Service      │◄───(port 8787)──►│  Chrome Extension  │
+│   (Node.js)        │    JSON protocol │  (Manifest V3)     │
+└────────────────────┘                  └────────────────────┘
+                                               │
+                                        chrome.tabs / cookies
+                                        chrome.scripting APIs
+                                               │
+                                        ┌──────▼─────────────┐
+                                        │  Chrome / Edge /   │
+                                        │  Brave Browser     │
+                                        └────────────────────┘
+```
+
+### Installation
+
+1. Start UAB (`uab.start()` or `uab detect`)
+2. Open Chrome → `chrome://extensions/`
+3. Enable **Developer mode** (toggle in top-right)
+4. Click **Load unpacked** → select `data/chrome-extension/`
+5. The extension auto-connects via WebSocket — done!
+
+The extension persists across browser restarts and auto-reconnects when UAB restarts.
+
+### Browser Actions
+
+The extension bridge supports these additional actions beyond standard UAB:
+
+| Action | Description | Params |
+|--------|-------------|--------|
+| `getTabs` | List all open tabs | — |
+| `newTab` | Open a new tab | `{ url }` |
+| `closeTab` | Close a tab | `{ tabId }` |
+| `switchTab` | Activate a tab | `{ tabId }` |
+| `navigate` | Navigate to URL | `{ url }` |
+| `goBack` / `goForward` | Browser history | — |
+| `getCookies` | Read cookies | `{ domain?, url?, cookieName? }` |
+| `setCookie` | Set a cookie | `{ url, cookieName, cookieValue, ... }` |
+| `deleteCookie` / `clearCookies` | Remove cookies | `{ url?, cookieName?, domain? }` |
+| `getLocalStorage` / `setLocalStorage` | localStorage ops | `{ storageKey, storageValue? }` |
+| `getSessionStorage` / `setSessionStorage` | sessionStorage ops | `{ storageKey, storageValue? }` |
+| `executeScript` | Run JavaScript in page | `{ script }` |
+| `screenshot` | Capture visible tab | `{ outputPath? }` |
+
+### Fallback Strategy
+
+If the extension is not installed, UAB automatically falls back to the CDP-based `BrowserPlugin` which requires the browser to be relaunched with `--remote-debugging-port`.
+
+```
+Priority 1: Chrome Extension Bridge (no relaunch needed)
+Priority 2: CDP Browser Plugin (requires debug flag)
+```
+
 ## Advanced Features
 
 ### Action Chains
@@ -162,10 +224,10 @@ const result = await uab.executeChain(chain);
 UAB automatically selects the best control method with fallback:
 
 ```
-Priority 1: Direct API / Framework Hook (Electron CDP, etc.)
-Priority 2: Windows UI Automation (universal fallback)
-Priority 3: Accessibility API
-Priority 4: Vision + Input Injection
+Priority 1: Chrome Extension Bridge (browsers — no relaunch)
+Priority 2: CDP Browser Plugin (browsers — with debug flag)
+Priority 3: Direct API / Framework Hook (Electron CDP, etc.)
+Priority 4: Windows UI Automation (universal fallback)
 ```
 
 ### Smart Caching
@@ -227,6 +289,7 @@ Agent Runtime (Claude / GPT / Any Agent)
 │         |              |        │
 │  ┌──────┴──────────────┴──────┐ │
 │  │     Framework Plugins      │ │
+│  │ Chrome Ext  Browser (CDP)  │ │
 │  │ Electron  Qt  GTK  WPF     │ │
 │  │ Flutter  Java  Office      │ │
 │  └────────────────────────────┘ │

@@ -1,7 +1,7 @@
 {
   "name": "universal-app-bridge",
-  "version": "0.5.0",
-  "description": "Framework-level desktop app control for AI agents. Hook into Electron, Qt, GTK, WPF, Flutter, Java, and Office apps with a unified API.",
+  "version": "0.6.0",
+  "description": "Framework-level desktop app control for AI agents. Hook into Chrome, Electron, Qt, GTK, WPF, Flutter, Java, and Office apps with a unified API.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,6 +20,7 @@
   },
   "files": [
     "dist",
+    "data/chrome-extension",
     "README.md",
     "LICENSE"
   ],
@@ -44,8 +45,13 @@
     "app-control",
     "framework-hook",
     "uia",
-    "windows-automation"
+    "windows-automation",
+    "chrome-extension",
+    "browser-automation"
   ],
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
   "author": "ClaudeClaw",
   "license": "MIT",
   "engines": {

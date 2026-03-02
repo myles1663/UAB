@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "ClaudeClaw Bridge",
+  "version": "1.0.0",
+  "description": "Bridges Chrome browser APIs to ClaudeClaw UAB for desktop automation",
+  "permissions": [
+    "tabs",
+    "cookies",
+    "scripting",
+    "storage",
+    "activeTab",
+    "alarms",
+    "debugger"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "minimum_chrome_version": "116"
+}
