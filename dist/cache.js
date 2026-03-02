@@ -18,11 +18,21 @@ const MUTATING_ACTIONS = new Set([
     'expand', 'collapse', 'invoke',
     'keypress', 'hotkey',
     'close',
+    // Browser navigation actions change DOM
+    'navigate', 'goBack', 'goForward', 'reload',
+    'switchTab', 'newTab', 'closeTab',
+    // Browser storage/cookie mutations
+    'setCookie', 'deleteCookie', 'clearCookies',
+    'setLocalStorage', 'deleteLocalStorage', 'clearLocalStorage',
+    'setSessionStorage', 'deleteSessionStorage', 'clearSessionStorage',
+    'executeScript',
 ]);
 /** Actions that don't change the tree — safe to keep cache */
 const READ_ONLY_ACTIONS = new Set([
     'focus', 'hover', 'scroll', 'screenshot',
     'minimize', 'maximize', 'restore', 'move', 'resize',
+    // Browser read-only actions
+    'getCookies', 'getLocalStorage', 'getSessionStorage', 'getTabs',
 ]);
 export class ElementCache {
     treeCache = new Map();

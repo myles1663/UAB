@@ -13,11 +13,12 @@
  *
  * All output is JSON for easy parsing by AI agents.
  * This CLI is stateless — each invocation creates fresh connections.
- * For persistent connections, use the UAB service programmatic API.
+ * For persistent connections, use the UAB service via ClaudeClaw.
  */
 import { FrameworkDetector } from './detector.js';
 import { PluginManager } from './plugins/base.js';
 import { ElectronPlugin } from './plugins/electron/index.js';
+import { BrowserPlugin } from './plugins/browser/index.js';
 import { WinUIAPlugin } from './plugins/win-uia/index.js';
 import { QtPlugin } from './plugins/qt/index.js';
 import { GtkPlugin } from './plugins/gtk/index.js';
@@ -31,6 +32,7 @@ function createCore() {
     const detector = new FrameworkDetector();
     const pluginManager = new PluginManager();
     const router = new ControlRouter(pluginManager);
+    pluginManager.register(new BrowserPlugin());
     pluginManager.register(new ElectronPlugin());
     pluginManager.register(new OfficePlugin());
     pluginManager.register(new QtPlugin());
@@ -209,6 +211,11 @@ async function main() {
                     value: flags.value,
                     key: flags.key,
                     keys: flags.keys ? flags.keys.split('+') : undefined,
+                    url: flags.url,
+                    script: flags.script,
+                    direction: flags.direction,
+                    amount: flags.amount ? parseInt(flags.amount, 10) : undefined,
+                    method: flags.method,
                     x: flags.x ? parseInt(flags.x, 10) : undefined,
                     y: flags.y ? parseInt(flags.y, 10) : undefined,
                     width: flags.width ? parseInt(flags.width, 10) : undefined,
@@ -347,11 +354,231 @@ async function main() {
                 }
                 break;
             }
+            // ─── Browser Session & Cookie Commands ──────────────────
+            case 'cookies': {
+                const pidStr = args[0];
+                if (!pidStr)
+                    error('Usage: cookies <pid> [--name "cookie_name"] [--domain ".example.com"] [--url "https://..."]');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const result = await conn.act('', 'getCookies', {
+                    cookieName: flags.name,
+                    domain: flags.domain,
+                    url: flags.url,
+                });
+                output({ pid, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'setcookie': {
+                const pidStr = args[0];
+                if (!pidStr || !flags.name)
+                    error('Usage: setcookie <pid> --name "cookie_name" --value "val" [--domain ".example.com"] [--secure] [--httponly] [--samesite Lax] [--expires 1234567890]');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const result = await conn.act('', 'setCookie', {
+                    cookieName: flags.name,
+                    cookieValue: flags.value || '',
+                    domain: flags.domain,
+                    url: flags.url,
+                    secure: flags.secure === 'true',
+                    httpOnly: flags.httponly === 'true',
+                    sameSite: flags.samesite,
+                    expires: flags.expires ? parseInt(flags.expires, 10) : undefined,
+                });
+                output({ pid, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'deletecookie': {
+                const pidStr = args[0];
+                if (!pidStr || !flags.name)
+                    error('Usage: deletecookie <pid> --name "cookie_name" [--domain ".example.com"] [--url "https://..."]');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const result = await conn.act('', 'deleteCookie', {
+                    cookieName: flags.name,
+                    domain: flags.domain,
+                    url: flags.url,
+                });
+                output({ pid, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'clearcookies': {
+                const pidStr = args[0];
+                if (!pidStr)
+                    error('Usage: clearcookies <pid> [--domain ".example.com"]');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const result = await conn.act('', 'clearCookies', {
+                    domain: flags.domain,
+                });
+                output({ pid, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'storage': {
+                const pidStr = args[0];
+                const storageType = (flags.type || 'local').toLowerCase();
+                if (!pidStr)
+                    error('Usage: storage <pid> [--type local|session] [--key "key"] [--value "val"] [--action get|set|delete|clear]');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const storageAction = (flags.action || 'get').toLowerCase();
+                let actionType;
+                if (storageType === 'session') {
+                    actionType = (storageAction === 'set' ? 'setSessionStorage' :
+                        storageAction === 'delete' ? 'deleteSessionStorage' :
+                            storageAction === 'clear' ? 'clearSessionStorage' :
+                                'getSessionStorage');
+                }
+                else {
+                    actionType = (storageAction === 'set' ? 'setLocalStorage' :
+                        storageAction === 'delete' ? 'deleteLocalStorage' :
+                            storageAction === 'clear' ? 'clearLocalStorage' :
+                                'getLocalStorage');
+                }
+                const result = await conn.act('', actionType, {
+                    storageKey: flags.key,
+                    storageValue: flags.value,
+                });
+                output({ pid, storageType, action: storageAction, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'navigate': {
+                const pidStr = args[0];
+                const url = args[1] || flags.url;
+                if (!pidStr || !url)
+                    error('Usage: navigate <pid> <url>');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const result = await conn.act('', 'navigate', { url });
+                output({ pid, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'tabs': {
+                const pidStr = args[0];
+                if (!pidStr)
+                    error('Usage: tabs <pid>');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const result = await conn.act('', 'getTabs');
+                output({ pid, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'switchtab': {
+                const [pidStr, tabId] = args;
+                if (!pidStr || !tabId)
+                    error('Usage: switchtab <pid> <tabId|index>');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const result = await conn.act('', 'switchTab', { tabId });
+                output({ pid, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'newtab': {
+                const pidStr = args[0];
+                const url = args[1] || flags.url || 'about:blank';
+                if (!pidStr)
+                    error('Usage: newtab <pid> [url]');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const result = await conn.act('', 'newTab', { url });
+                output({ pid, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'closetab': {
+                const pidStr = args[0];
+                const tabId = args[1] || flags.tab;
+                if (!pidStr)
+                    error('Usage: closetab <pid> [tabId]');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const result = await conn.act('', 'closeTab', { tabId });
+                output({ pid, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'exec': {
+                const pidStr = args[0];
+                const script = args[1] || flags.script;
+                if (!pidStr || !script)
+                    error('Usage: exec <pid> "<javascript>" OR exec <pid> --script "js code"');
+                const pid = parseInt(pidStr, 10);
+                const app = await detector.detectByPid(pid);
+                if (!app)
+                    error(`No detectable app at PID ${pid}`);
+                const conn = await router.connect(app);
+                const result = await conn.act('', 'executeScript', { script });
+                output({ pid, ...result });
+                await router.disconnectAll();
+                break;
+            }
+            case 'ext-status': {
+                // Check extension installation and connection info
+                const { extensionExists, getExtensionVersion, getExtensionPath } = await import('./plugins/chrome-ext/installer.js');
+                output({
+                    extensionPath: getExtensionPath(),
+                    extensionExists: extensionExists(),
+                    extensionVersion: extensionExists() ? getExtensionVersion() : null,
+                    note: 'Extension connection status is only available in service mode (ClaudeClaw bot). CLI is stateless.',
+                    installInstructions: 'Load the extension via chrome://extensions > Developer mode > Load unpacked',
+                });
+                break;
+            }
+            case 'ext-install': {
+                const { getInstallInstructions, extensionExists, generateIcons } = await import('./plugins/chrome-ext/installer.js');
+                if (!extensionExists()) {
+                    error('Extension files not found in data/chrome-extension/');
+                }
+                generateIcons();
+                output({
+                    success: true,
+                    instructions: getInstallInstructions(),
+                });
+                break;
+            }
             case 'help':
             default:
                 output({
                     name: 'Universal App Bridge CLI',
-                    version: '0.4.0',
+                    version: '0.6.0',
                     commands: {
                         detect: 'Scan for controllable desktop apps [--electron]',
                         connect: 'Test connection to an app: connect <name|pid>',
@@ -364,6 +591,21 @@ async function main() {
                         window: 'Window control: window <pid> <min|max|restore|close|move|resize> [--x N --y N --width N --height N]',
                         screenshot: 'Capture window: screenshot <pid> [--output path.png]',
                         chain: 'Execute action chain: chain \'{"name":"test","pid":1234,"steps":[...]}\'',
+                        'ext-status': 'Check Chrome extension installation status',
+                        'ext-install': 'Generate icons and show install instructions',
+                    },
+                    browserCommands: {
+                        cookies: 'List cookies: cookies <pid> [--name "name"] [--domain ".example.com"]',
+                        setcookie: 'Set cookie: setcookie <pid> --name "name" --value "val" [--domain ".example.com"] [--secure] [--httponly] [--samesite Lax] [--expires timestamp]',
+                        deletecookie: 'Delete cookie: deletecookie <pid> --name "name" [--domain ".example.com"]',
+                        clearcookies: 'Clear cookies: clearcookies <pid> [--domain ".example.com"]',
+                        storage: 'Manage storage: storage <pid> [--type local|session] [--key "k"] [--value "v"] [--action get|set|delete|clear]',
+                        navigate: 'Navigate to URL: navigate <pid> <url>',
+                        tabs: 'List browser tabs: tabs <pid>',
+                        switchtab: 'Switch tab: switchtab <pid> <tabId|index>',
+                        newtab: 'Open new tab: newtab <pid> [url]',
+                        closetab: 'Close tab: closetab <pid> [tabId]',
+                        exec: 'Execute JavaScript: exec <pid> "document.title"',
                     },
                     officeActions: {
                         readDocument: 'Read Word document content: act <pid> _ readDocument',

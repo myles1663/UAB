@@ -356,9 +356,31 @@ const OFFICE_PROCESS_NAMES = new Set([
     'winword.exe', 'excel.exe', 'powerpnt.exe', 'outlook.exe',
     'onenote.exe', 'msaccess.exe', 'mspub.exe', 'visio.exe',
 ]);
+// Browser executables — detected by process name, connected via CDP
+const BROWSER_PROCESS_NAMES = new Set([
+    'chrome.exe', 'msedge.exe', 'brave.exe',
+    'chromium.exe', 'vivaldi.exe', 'opera.exe',
+]);
+const BROWSER_DISPLAY_NAMES = {
+    'chrome.exe': 'Google Chrome',
+    'msedge.exe': 'Microsoft Edge',
+    'brave.exe': 'Brave Browser',
+    'chromium.exe': 'Chromium',
+    'vivaldi.exe': 'Vivaldi',
+    'opera.exe': 'Opera',
+};
 function detectFramework(proc) {
     const nameLower = proc.name.toLowerCase();
     const cmdLower = proc.commandLine.toLowerCase();
+    // Fast path: Browser apps detected by executable name (before Electron check!)
+    if (BROWSER_PROCESS_NAMES.has(nameLower)) {
+        // Only mark as browser if it has a CDP debug port OR is a main browser process (not a renderer subprocess)
+        const hasDebugPort = cmdLower.includes('--remote-debugging-port');
+        const isRenderer = cmdLower.includes('--type=renderer') || cmdLower.includes('--type=gpu-process') || cmdLower.includes('--type=utility');
+        if (!isRenderer) {
+            return { framework: 'browser', confidence: hasDebugPort ? 0.95 : 0.7 };
+        }
+    }
     // Fast path: Office apps detected by executable name
     if (OFFICE_PROCESS_NAMES.has(nameLower)) {
         return { framework: 'office', confidence: 0.95 };
@@ -439,9 +461,12 @@ export class FrameworkDetector {
                     confidence: framework === 'unknown' ? 0.5 : confidence,
                     windowTitle: proc.windowTitle,
                 };
-                if (framework === 'electron') {
+                if (framework === 'electron' || framework === 'browser') {
                     const debugPort = detectElectronDebugPort(proc);
                     app.connectionInfo = debugPort ? { debugPort, protocol: 'cdp' } : { protocol: 'cdp' };
+                    if (framework === 'browser') {
+                        app.name = BROWSER_DISPLAY_NAMES[proc.name.toLowerCase()] || proc.name.replace('.exe', '');
+                    }
                 }
                 apps.push(app);
                 this.cache.set(proc.pid, app);
@@ -476,9 +501,12 @@ export class FrameworkDetector {
             confidence: framework === 'unknown' ? 0.5 : confidence,
             windowTitle: getWindowTitle(pid),
         };
-        if (framework === 'electron') {
+        if (framework === 'electron' || framework === 'browser') {
             const debugPort = detectElectronDebugPort(proc);
             app.connectionInfo = debugPort ? { debugPort, protocol: 'cdp' } : { protocol: 'cdp' };
+            if (framework === 'browser') {
+                app.name = BROWSER_DISPLAY_NAMES[proc.name.toLowerCase()] || proc.name.replace('.exe', '');
+            }
         }
         this.cache.set(pid, app);
         return app;

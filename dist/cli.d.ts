@@ -13,7 +13,7 @@
  *
  * All output is JSON for easy parsing by AI agents.
  * This CLI is stateless — each invocation creates fresh connections.
- * For persistent connections, use the UAB service programmatic API.
+ * For persistent connections, use the UAB service via ClaudeClaw.
  */
 export {};
 //# sourceMappingURL=cli.d.ts.map

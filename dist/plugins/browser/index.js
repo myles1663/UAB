@@ -46,7 +46,19 @@ const DEFAULT_USER_DATA_DIRS = {
     'vivaldi.exe': '%LOCALAPPDATA%\\Vivaldi\\User Data',
     'opera.exe': '%APPDATA%\\Opera Software\\Opera Stable',
 };
-const DEFAULT_DEBUG_PORT = 9222;
+// Per-browser default CDP ports to avoid conflicts when multiple browsers run
+const BROWSER_DEBUG_PORTS = {
+    'chrome.exe': 9222,
+    'msedge.exe': 9223,
+    'brave.exe': 9224,
+    'chromium.exe': 9225,
+    'vivaldi.exe': 9226,
+    'opera.exe': 9227,
+};
+function getDefaultDebugPort(processNameOrPath) {
+    const name = (processNameOrPath.split(/[\\/]/).pop() || '').toLowerCase();
+    return BROWSER_DEBUG_PORTS[name] || 9222;
+}
 /**
  * Get the user-data-dir from a running browser's command line, or fall back to the default.
  */
@@ -82,24 +94,24 @@ function getProfileDir(pid) {
     return '';
 }
 /**
- * Gracefully close a browser process tree and wait for exit.
- * Tries graceful close first (WM_CLOSE), then taskkill if needed.
+ * Gracefully close ALL instances of a browser and wait for exit.
+ * Browsers use multi-process architecture, so killing by image name
+ * ensures the profile directory is fully released for relaunch.
  */
 async function closeBrowserGracefully(pid, processName) {
-    log.info('Closing browser for relaunch', { pid, processName });
-    // First try graceful close via taskkill (sends WM_CLOSE)
+    log.info('Closing all browser instances for relaunch', { pid, processName });
+    // Kill all instances of this browser by image name (sends WM_CLOSE)
     try {
-        execSync(`taskkill /PID ${pid}`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' });
+        execSync(`taskkill /IM ${processName}`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' });
     }
     catch { /* might already be closed */ }
-    // Wait for process to exit (up to 8 seconds)
+    // Wait for all processes of this browser to exit (up to 8 seconds)
     for (let i = 0; i < 16; i++) {
         await new Promise(r => setTimeout(r, 500));
         try {
-            const check = execSync(`tasklist /FI "PID eq ${pid}" /NH`, { encoding: 'utf-8', timeout: 3000 });
-            // If the PID is no longer in the task list, it exited
-            if (!check.includes(String(pid))) {
-                log.info('Browser closed gracefully', { pid });
+            const check = execSync(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, { encoding: 'utf-8', timeout: 3000 });
+            if (!check.toLowerCase().includes(processName.toLowerCase())) {
+                log.info('Browser closed gracefully', { processName });
                 return;
             }
         }
@@ -109,8 +121,8 @@ async function closeBrowserGracefully(pid, processName) {
     }
     // Force kill if still running after 8s
     try {
-        execSync(`taskkill /F /PID ${pid}`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' });
-        log.warn('Browser force-killed after graceful close timeout', { pid });
+        execSync(`taskkill /F /IM ${processName}`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' });
+        log.warn('Browser force-killed after graceful close timeout', { processName });
     }
     catch { /* already dead */ }
     // Brief pause after force kill
@@ -167,24 +179,28 @@ export class BrowserPlugin {
         return app.framework === 'browser';
     }
     async connect(app) {
-        const port = app.connectionInfo?.debugPort || DEFAULT_DEBUG_PORT;
+        const processName = app.path
+            ? app.path.split(/[\\/]/).pop() || ''
+            : '';
+        const browserPort = getDefaultDebugPort(processName);
+        const port = app.connectionInfo?.debugPort || browserPort;
         let actualPort = port;
-        // ── Fast path: try the default CDP port first ──
-        // Chrome shortcuts are patched to always launch with --remote-debugging-port=9222,
-        // so most of the time CDP is already available without any command-line inspection.
+        // ── Fast path: try the browser-specific CDP port first ──
+        // Each browser gets its own default port (Chrome=9222, Edge=9223, etc.)
+        // to avoid conflicts when multiple browsers run simultaneously.
         if (!app.connectionInfo?.debugPort) {
             let cdpReady = false;
             try {
-                const targets = await CDPConnection.discoverTargets('127.0.0.1', DEFAULT_DEBUG_PORT);
+                const targets = await CDPConnection.discoverTargets('127.0.0.1', browserPort);
                 if (targets.length > 0) {
-                    actualPort = DEFAULT_DEBUG_PORT;
+                    actualPort = browserPort;
                     cdpReady = true;
-                    log.info('CDP already available on default port (shortcut-patched Chrome)', {
-                        name: app.name, port: DEFAULT_DEBUG_PORT, targets: targets.length,
+                    log.info('CDP already available on browser-specific port', {
+                        name: app.name, port: browserPort, targets: targets.length,
                     });
                 }
             }
-            catch { /* CDP not on default port, continue discovery */ }
+            catch { /* CDP not on this port, continue discovery */ }
             if (!cdpReady) {
                 // Fallback: inspect command line for a custom port
                 const discovered = CDPConnection.findDebugPort(app.pid);
@@ -195,22 +211,19 @@ export class BrowserPlugin {
                     // ── Auto-launch: browser is running without debug port ──
                     // Close and relaunch with --remote-debugging-port
                     log.info('No CDP debug port found — auto-relaunching browser', {
-                        name: app.name, pid: app.pid,
+                        name: app.name, pid: app.pid, port: browserPort,
                     });
-                    const processName = app.path
-                        ? app.path.split(/[\\/]/).pop() || ''
-                        : '';
                     if (!app.path) {
                         throw new Error(`Cannot auto-relaunch ${app.name}: executable path unknown.\n` +
-                            `Manually relaunch with: "${app.name}" --remote-debugging-port=${DEFAULT_DEBUG_PORT}`);
+                            `Manually relaunch with: "${app.name}" --remote-debugging-port=${browserPort}`);
                     }
                     // Capture profile info before closing
                     const userDataDir = getUserDataDir(processName, app.pid);
                     const profileDir = getProfileDir(app.pid);
                     // Close the running browser
                     await closeBrowserGracefully(app.pid, processName);
-                    // Relaunch with debug port
-                    actualPort = DEFAULT_DEBUG_PORT;
+                    // Relaunch with browser-specific debug port
+                    actualPort = browserPort;
                     const newPid = await relaunchWithDebugPort(app.path, processName, userDataDir, profileDir, actualPort);
                     // Update the app reference with the new PID
                     app.pid = newPid;
@@ -348,8 +361,12 @@ class BrowserConnection {
             case 'move': return await this.doWindowMove(params);
             case 'resize': return await this.doWindowResize(params);
         }
-        // Element-based actions
-        const nodeId = this.mapper.getNodeId(elementId);
+        // Element-based actions — auto-enumerate if node map is empty
+        let nodeId = this.mapper.getNodeId(elementId);
+        if (!nodeId) {
+            await this.enumerate();
+            nodeId = this.mapper.getNodeId(elementId);
+        }
         if (!nodeId)
             return { success: false, error: `Element not found: ${elementId}` };
         try {
@@ -1184,20 +1201,20 @@ $targetPid = ${this.app.pid}
 $hWnd = [IntPtr]::Zero
 [Win32Browser]::EnumWindows({
   param($hwnd, $lparam)
-  $pid = 0
-  [Win32Browser]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-  if ($pid -eq $targetPid -and [Win32Browser]::IsWindowVisible($hwnd)) {
+  $wpid = 0
+  [Win32Browser]::GetWindowThreadProcessId($hwnd, [ref]$wpid) | Out-Null
+  if ($wpid -eq $targetPid -and [Win32Browser]::IsWindowVisible($hwnd)) {
     $script:hWnd = $hwnd
     return $false
   }
   return $true
-}, [IntPtr]::Zero)
+}, [IntPtr]::Zero) | Out-Null
 
 if ($hWnd -eq [IntPtr]::Zero) {
   @{ success = $false; error = 'No visible window found for PID ${this.app.pid}' } | ConvertTo-Json -Compress
 } else {
   ${actionMap[action]}
-  @{ success = $true; action = '${action}'; pid = $targetPid } | ConvertTo-Json -Compress
+  @{ success = $true; action = '${action}'; wpid = $targetPid } | ConvertTo-Json -Compress
 }
 `;
             const result = runPSJsonInteractive(script, 10000);
@@ -1232,14 +1249,14 @@ $targetPid = ${this.app.pid}
 $hWnd = [IntPtr]::Zero
 [Win32BrowserMove]::EnumWindows({
   param($hwnd, $lparam)
-  $pid = 0
-  [Win32BrowserMove]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-  if ($pid -eq $targetPid -and [Win32BrowserMove]::IsWindowVisible($hwnd)) {
+  $wpid = 0
+  [Win32BrowserMove]::GetWindowThreadProcessId($hwnd, [ref]$wpid) | Out-Null
+  if ($wpid -eq $targetPid -and [Win32BrowserMove]::IsWindowVisible($hwnd)) {
     $script:hWnd = $hwnd
     return $false
   }
   return $true
-}, [IntPtr]::Zero)
+}, [IntPtr]::Zero) | Out-Null
 
 if ($hWnd -eq [IntPtr]::Zero) {
   @{ success = $false; error = 'No visible window found' } | ConvertTo-Json -Compress
@@ -1283,14 +1300,14 @@ $targetPid = ${this.app.pid}
 $hWnd = [IntPtr]::Zero
 [Win32BrowserResize]::EnumWindows({
   param($hwnd, $lparam)
-  $pid = 0
-  [Win32BrowserResize]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-  if ($pid -eq $targetPid -and [Win32BrowserResize]::IsWindowVisible($hwnd)) {
+  $wpid = 0
+  [Win32BrowserResize]::GetWindowThreadProcessId($hwnd, [ref]$wpid) | Out-Null
+  if ($wpid -eq $targetPid -and [Win32BrowserResize]::IsWindowVisible($hwnd)) {
     $script:hWnd = $hwnd
     return $false
   }
   return $true
-}, [IntPtr]::Zero)
+}, [IntPtr]::Zero) | Out-Null
 
 if ($hWnd -eq [IntPtr]::Zero) {
   @{ success = $false; error = 'No visible window found' } | ConvertTo-Json -Compress

@@ -23,3 +23,4 @@ export declare class JavaPlugin implements FrameworkPlugin {
     connect(app: DetectedApp): Promise<PluginConnection>;
 }
 export default JavaPlugin;
+//# sourceMappingURL=index.d.ts.map

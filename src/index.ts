@@ -89,14 +89,6 @@ export type {
 
 // ─── Plugins ────────────────────────────────────────────────────
 export { PluginManager } from './plugins/base.js';
-export { ChromeExtPlugin } from './plugins/chrome-ext/index.js';
-export { ExtensionWSServer } from './plugins/chrome-ext/ws-server.js';
-export type { ExtensionInfo } from './plugins/chrome-ext/ws-server.js';
-export {
-  getExtensionPath, extensionExists, getExtensionVersion,
-  generateIcons, getInstallInstructions, isExtensionActive,
-} from './plugins/chrome-ext/installer.js';
-export { BrowserPlugin } from './plugins/browser/index.js';
 export { ElectronPlugin } from './plugins/electron/index.js';
 export { WinUIAPlugin } from './plugins/win-uia/index.js';
 export { QtPlugin } from './plugins/qt/index.js';

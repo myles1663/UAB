@@ -1,7 +1,7 @@
 /**
  * UAB Service — Singleton service managing the Universal App Bridge lifecycle.
  *
- * Framework-agnostic: import this module from any AI agent runtime —
+ * Framework-agnostic: import this module from ClaudeClaw, Lancelot,
  * or any other AI agent runtime to get desktop app control.
  *
  * Phase 4 enhancements:
@@ -29,11 +29,11 @@ export declare class UABService {
     private pluginManager;
     private router;
     private _running;
-    readonly extensionServer: ExtensionWSServer;
     private connectionMgr;
     private cache;
     readonly permissions: PermissionManager;
     private chainExecutor;
+    readonly extensionServer: ExtensionWSServer;
     constructor();
     get running(): boolean;
     /**

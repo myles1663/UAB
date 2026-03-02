@@ -1,7 +1,7 @@
 /**
  * Chrome Extension Auto-Installer
  *
- * Registers the UAB Bridge extension for automatic installation
+ * Registers the ClaudeClaw Bridge extension for automatic installation
  * via Windows registry (external extensions mechanism).
  *
  * How it works:

@@ -66,6 +66,8 @@
   },
   "homepage": "https://github.com/myles1663/UAB#readme",
   "devDependencies": {
+    "@types/node": "^25.3.3",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.9.3"
   }
 }

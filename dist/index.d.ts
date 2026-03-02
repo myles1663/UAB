@@ -41,3 +41,4 @@ export { JavaPlugin } from './plugins/java/index.js';
 export { FlutterPlugin } from './plugins/flutter/index.js';
 export { OfficePlugin } from './plugins/office/index.js';
 export { createLogger, closeLogger } from './logger.js';
+//# sourceMappingURL=index.d.ts.map

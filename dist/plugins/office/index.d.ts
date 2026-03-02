@@ -23,3 +23,4 @@ export declare class OfficePlugin implements FrameworkPlugin {
     connect(app: DetectedApp): Promise<PluginConnection>;
 }
 export default OfficePlugin;
+//# sourceMappingURL=index.d.ts.map

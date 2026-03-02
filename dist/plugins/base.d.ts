@@ -38,3 +38,4 @@ export declare class PluginManager {
         connected: boolean;
     }>;
 }
+//# sourceMappingURL=base.d.ts.map

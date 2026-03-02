@@ -5,7 +5,7 @@
  * giving agents a single consistent interface to any desktop app.
  *
  * This module is framework-agnostic — it can be imported by
- * any AI agent runtime.
+ * ClaudeClaw, Lancelot, or any other AI agent runtime.
  */
 export interface UIElement {
     id: string;
@@ -26,7 +26,7 @@ export interface Bounds {
     height: number;
 }
 export type ElementType = 'window' | 'button' | 'textfield' | 'textarea' | 'checkbox' | 'radio' | 'select' | 'menu' | 'menuitem' | 'list' | 'listitem' | 'table' | 'tablerow' | 'tablecell' | 'tab' | 'tabpanel' | 'tree' | 'treeitem' | 'slider' | 'progressbar' | 'scrollbar' | 'toolbar' | 'statusbar' | 'dialog' | 'tooltip' | 'image' | 'link' | 'label' | 'heading' | 'separator' | 'container' | 'unknown';
-export type ActionType = 'click' | 'doubleclick' | 'rightclick' | 'type' | 'clear' | 'select' | 'scroll' | 'focus' | 'hover' | 'expand' | 'collapse' | 'invoke' | 'check' | 'uncheck' | 'toggle' | 'keypress' | 'hotkey' | 'minimize' | 'maximize' | 'restore' | 'close' | 'move' | 'resize' | 'screenshot' | 'contextmenu' | 'readDocument' | 'readCell' | 'writeCell' | 'readRange' | 'writeRange' | 'getSheets' | 'readFormula' | 'readSlides' | 'readSlideText' | 'readEmails' | 'composeEmail' | 'sendEmail';
+export type ActionType = 'click' | 'doubleclick' | 'rightclick' | 'type' | 'clear' | 'select' | 'scroll' | 'focus' | 'hover' | 'expand' | 'collapse' | 'invoke' | 'check' | 'uncheck' | 'toggle' | 'keypress' | 'hotkey' | 'minimize' | 'maximize' | 'restore' | 'close' | 'move' | 'resize' | 'screenshot' | 'contextmenu' | 'readDocument' | 'readCell' | 'writeCell' | 'readRange' | 'writeRange' | 'getSheets' | 'readFormula' | 'readSlides' | 'readSlideText' | 'readEmails' | 'composeEmail' | 'sendEmail' | 'getCookies' | 'setCookie' | 'deleteCookie' | 'clearCookies' | 'getLocalStorage' | 'setLocalStorage' | 'deleteLocalStorage' | 'clearLocalStorage' | 'getSessionStorage' | 'setSessionStorage' | 'deleteSessionStorage' | 'clearSessionStorage' | 'navigate' | 'goBack' | 'goForward' | 'reload' | 'getTabs' | 'switchTab' | 'closeTab' | 'newTab' | 'executeScript';
 export interface ElementSelector {
     type?: ElementType;
     label?: string;
@@ -66,6 +66,19 @@ export interface ActionParams {
     folder?: string;
     count?: number;
     slideIndex?: number;
+    url?: string;
+    domain?: string;
+    path?: string;
+    cookieName?: string;
+    cookieValue?: string;
+    secure?: boolean;
+    httpOnly?: boolean;
+    sameSite?: 'Strict' | 'Lax' | 'None';
+    expires?: number;
+    storageKey?: string;
+    storageValue?: string;
+    tabId?: string;
+    script?: string;
 }
 export interface ActionResult {
     success: boolean;
@@ -107,7 +120,7 @@ export interface Subscription {
     event: UABEventType;
     unsubscribe: () => void;
 }
-export type FrameworkType = 'electron' | 'qt5' | 'qt6' | 'gtk3' | 'gtk4' | 'macos-native' | 'wpf' | 'winui' | 'dotnet' | 'flutter' | 'java-swing' | 'javafx' | 'office' | 'unknown';
+export type FrameworkType = 'electron' | 'browser' | 'qt5' | 'qt6' | 'gtk3' | 'gtk4' | 'macos-native' | 'wpf' | 'winui' | 'dotnet' | 'flutter' | 'java-swing' | 'javafx' | 'office' | 'unknown';
 export interface DetectedApp {
     pid: number;
     name: string;

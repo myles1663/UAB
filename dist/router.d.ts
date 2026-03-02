@@ -38,3 +38,4 @@ export declare class RoutedConnection implements PluginConnection {
     private withActionFallback;
     private withFallback;
 }
+//# sourceMappingURL=router.d.ts.map

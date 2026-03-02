@@ -108,7 +108,12 @@ class ElectronConnection {
             case 'move': return await this.doWindowMove(params);
             case 'resize': return await this.doWindowResize(params);
         }
-        const nodeId = this.mapper.getNodeId(elementId);
+        // Auto-enumerate if node map is empty (stateless CLI calls)
+        let nodeId = this.mapper.getNodeId(elementId);
+        if (!nodeId) {
+            await this.enumerate();
+            nodeId = this.mapper.getNodeId(elementId);
+        }
         if (!nodeId)
             return { success: false, error: `Element not found: ${elementId}` };
         try {
@@ -672,20 +677,20 @@ $targetPid = ${this.app.pid}
 $hWnd = [IntPtr]::Zero
 [Win32]::EnumWindows({
   param($hwnd, $lparam)
-  $pid = 0
-  [Win32]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-  if ($pid -eq $targetPid -and [Win32]::IsWindowVisible($hwnd)) {
+  $wpid = 0
+  [Win32]::GetWindowThreadProcessId($hwnd, [ref]$wpid) | Out-Null
+  if ($wpid -eq $targetPid -and [Win32]::IsWindowVisible($hwnd)) {
     $script:hWnd = $hwnd
     return $false
   }
   return $true
-}, [IntPtr]::Zero)
+}, [IntPtr]::Zero) | Out-Null
 
 if ($hWnd -eq [IntPtr]::Zero) {
   @{ success = $false; error = 'No visible window found for PID ${this.app.pid}' } | ConvertTo-Json -Compress
 } else {
   ${actionMap[action]}
-  @{ success = $true; action = '${action}'; pid = $targetPid } | ConvertTo-Json -Compress
+  @{ success = $true; action = '${action}'; wpid = $targetPid } | ConvertTo-Json -Compress
 }
 `;
             const result = runPSJsonInteractive(script, 10000);
@@ -720,14 +725,14 @@ $targetPid = ${this.app.pid}
 $hWnd = [IntPtr]::Zero
 [Win32Move]::EnumWindows({
   param($hwnd, $lparam)
-  $pid = 0
-  [Win32Move]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-  if ($pid -eq $targetPid -and [Win32Move]::IsWindowVisible($hwnd)) {
+  $wpid = 0
+  [Win32Move]::GetWindowThreadProcessId($hwnd, [ref]$wpid) | Out-Null
+  if ($wpid -eq $targetPid -and [Win32Move]::IsWindowVisible($hwnd)) {
     $script:hWnd = $hwnd
     return $false
   }
   return $true
-}, [IntPtr]::Zero)
+}, [IntPtr]::Zero) | Out-Null
 
 if ($hWnd -eq [IntPtr]::Zero) {
   @{ success = $false; error = 'No visible window found' } | ConvertTo-Json -Compress
@@ -771,9 +776,9 @@ $targetPid = ${this.app.pid}
 $hWnd = [IntPtr]::Zero
 [Win32Resize]::EnumWindows({
   param($hwnd, $lparam)
-  $pid = 0
-  [Win32Resize]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-  if ($pid -eq $targetPid -and [Win32Resize]::IsWindowVisible($hwnd)) {
+  $wpid = 0
+  [Win32Resize]::GetWindowThreadProcessId($hwnd, [ref]$wpid) | Out-Null
+  if ($wpid -eq $targetPid -and [Win32Resize]::IsWindowVisible($hwnd)) {
     $script:hWnd = $hwnd
     return $false
   }

@@ -1,7 +1,7 @@
 /**
  * UAB Service — Singleton service managing the Universal App Bridge lifecycle.
  *
- * Framework-agnostic: import this module from any AI agent runtime —
+ * Framework-agnostic: import this module from ClaudeClaw, Lancelot,
  * or any other AI agent runtime to get desktop app control.
  *
  * Phase 4 enhancements:
@@ -23,10 +23,10 @@
 
 import { FrameworkDetector } from './detector.js';
 import { PluginManager } from './plugins/base.js';
+import { ElectronPlugin } from './plugins/electron/index.js';
+import { BrowserPlugin } from './plugins/browser/index.js';
 import { ChromeExtPlugin } from './plugins/chrome-ext/index.js';
 import { ExtensionWSServer } from './plugins/chrome-ext/ws-server.js';
-import { BrowserPlugin } from './plugins/browser/index.js';
-import { ElectronPlugin } from './plugins/electron/index.js';
 import { WinUIAPlugin } from './plugins/win-uia/index.js';
 import { QtPlugin } from './plugins/qt/index.js';
 import { GtkPlugin } from './plugins/gtk/index.js';
@@ -53,26 +53,28 @@ export class UABService {
   private router: ControlRouter;
   private _running = false;
 
-  // Phase 5: Chrome Extension Bridge
-  readonly extensionServer: ExtensionWSServer;
-
   // Phase 4: Production hardening modules
   private connectionMgr: ConnectionManager;
   private cache: ElementCache;
   readonly permissions: PermissionManager;
   private chainExecutor: ChainExecutor;
 
+  // Phase 5: Chrome Extension bridge
+  readonly extensionServer: ExtensionWSServer;
+
   constructor() {
     this.detector = new FrameworkDetector();
     this.pluginManager = new PluginManager();
     this.router = new ControlRouter(this.pluginManager);
-    this.extensionServer = new ExtensionWSServer();
 
     // Phase 4 modules
     this.connectionMgr = new ConnectionManager(this.router);
     this.cache = new ElementCache();
     this.permissions = new PermissionManager();
     this.chainExecutor = new ChainExecutor(this);
+
+    // Phase 5: Chrome Extension WebSocket bridge
+    this.extensionServer = new ExtensionWSServer();
   }
 
   get running(): boolean { return this._running; }
@@ -87,12 +89,20 @@ export class UABService {
     const fs = await import('fs');
     fs.mkdirSync('data/screenshots', { recursive: true });
 
-    // Start the Chrome Extension WebSocket bridge
-    await this.extensionServer.start();
+    // Start Chrome Extension WebSocket bridge (non-blocking)
+    try {
+      await this.extensionServer.start();
+      log.info('Extension WS bridge ready on port 8787');
+    } catch (err) {
+      log.warn('Extension WS bridge failed to start (port in use?)', {
+        error: (err as Error).message,
+      });
+    }
 
     // Register framework plugins (priority order: specific -> generic)
-    this.pluginManager.register(new ChromeExtPlugin(this.extensionServer)); // Browser extension (no relaunch)
-    this.pluginManager.register(new BrowserPlugin());     // Browser CDP fallback (needs relaunch)
+    // ChromeExtPlugin is highest priority for browsers — no relaunch needed!
+    this.pluginManager.register(new ChromeExtPlugin(this.extensionServer));  // Extension bridge (no relaunch)
+    this.pluginManager.register(new BrowserPlugin());     // CDP -- fallback (needs relaunch)
     this.pluginManager.register(new ElectronPlugin());    // CDP -- best for Electron
     this.pluginManager.register(new OfficePlugin());      // Office (Word/Excel/PPT) + document content
     this.pluginManager.register(new QtPlugin());          // Qt via UIA
@@ -107,6 +117,7 @@ export class UABService {
     this._running = true;
     log.info('UAB service started', {
       frameworks: this.pluginManager.getRegisteredFrameworks(),
+      extensionBridge: this.extensionServer.connected,
     });
   }
 
@@ -115,9 +126,9 @@ export class UABService {
    */
   async stop(): Promise<void> {
     if (!this._running) return;
-    await this.extensionServer.stop();
     await this.connectionMgr.shutdown();
     await this.router.disconnectAll();
+    await this.extensionServer.stop();
     this.cache.clear();
     this.permissions.clear();
     this._running = false;
