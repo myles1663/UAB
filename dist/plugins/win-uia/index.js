@@ -818,7 +818,7 @@ Add-Type -TypeDefinition '
   using System; using System.Runtime.InteropServices;
   public class WinMgmt { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); }
 '
-[WinMgmt]::ShowWindow($proc.MainWindowHandle, 6) | Out-Null
+[void][WinMgmt]::ShowWindow($proc.MainWindowHandle, 6)
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
         case 'maximize':
@@ -827,7 +827,7 @@ Add-Type -TypeDefinition '
   using System; using System.Runtime.InteropServices;
   public class WinMgmt { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); }
 '
-[WinMgmt]::ShowWindow($proc.MainWindowHandle, 3) | Out-Null
+[void][WinMgmt]::ShowWindow($proc.MainWindowHandle, 3)
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
         case 'restore':
@@ -836,7 +836,7 @@ Add-Type -TypeDefinition '
   using System; using System.Runtime.InteropServices;
   public class WinMgmt { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); }
 '
-[WinMgmt]::ShowWindow($proc.MainWindowHandle, 9) | Out-Null
+[void][WinMgmt]::ShowWindow($proc.MainWindowHandle, 9)
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
         case 'close':
@@ -848,7 +848,7 @@ Add-Type -TypeDefinition '
     public const uint WM_CLOSE = 0x0010;
   }
 '
-[WinMgmt]::SendMessage($proc.MainWindowHandle, [WinMgmt]::WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+[void][WinMgmt]::SendMessage($proc.MainWindowHandle, [WinMgmt]::WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero)
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
         case 'move':
@@ -862,10 +862,10 @@ Add-Type -TypeDefinition '
   }
 '
 $rect = New-Object WinMgmt+RECT
-[WinMgmt]::GetWindowRect($proc.MainWindowHandle, [ref]$rect) | Out-Null
+[void][WinMgmt]::GetWindowRect($proc.MainWindowHandle, [ref]$rect)
 $w = $rect.Right - $rect.Left
 $h = $rect.Bottom - $rect.Top
-[WinMgmt]::MoveWindow($proc.MainWindowHandle, ${params?.x ?? 0}, ${params?.y ?? 0}, $w, $h, $true) | Out-Null
+[void][WinMgmt]::MoveWindow($proc.MainWindowHandle, ${params?.x ?? 0}, ${params?.y ?? 0}, $w, $h, $true)
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
         case 'resize':
@@ -879,8 +879,8 @@ Add-Type -TypeDefinition '
   }
 '
 $rect = New-Object WinMgmt+RECT
-[WinMgmt]::GetWindowRect($proc.MainWindowHandle, [ref]$rect) | Out-Null
-[WinMgmt]::MoveWindow($proc.MainWindowHandle, $rect.Left, $rect.Top, ${params?.width ?? 800}, ${params?.height ?? 600}, $true) | Out-Null
+[void][WinMgmt]::GetWindowRect($proc.MainWindowHandle, [ref]$rect)
+[void][WinMgmt]::MoveWindow($proc.MainWindowHandle, $rect.Left, $rect.Top, ${params?.width ?? 800}, ${params?.height ?? 600}, $true)
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
     }

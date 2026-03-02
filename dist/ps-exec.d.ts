@@ -16,7 +16,6 @@
 export declare function isSession0(): boolean;
 /**
  * Execute a PowerShell script and parse the JSON output.
- * Handles PowerShell Infinity/-Infinity values (not valid JSON) by replacing with 0.
  */
 export declare function runPSJson(script: string, timeoutMs?: number): unknown;
 /**
