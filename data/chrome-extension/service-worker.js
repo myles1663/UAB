@@ -1,7 +1,7 @@
 /**
- * ClaudeClaw Chrome Extension — Service Worker
+ * UAB Bridge Chrome Extension — Service Worker
  *
- * Connects to ClaudeClaw's local WebSocket server and bridges
+ * Connects to UAB's local WebSocket server and bridges
  * Chrome API calls for browser automation without requiring
  * Chrome to be relaunched with --remote-debugging-port.
  *
@@ -30,7 +30,7 @@ function connect() {
   }
 
   ws.onopen = () => {
-    console.log('[ClaudeClaw] Connected to UAB server');
+    console.log('[UAB] Connected to UAB server');
     clearTimeout(reconnectTimer);
     // Send hello
     ws.send(JSON.stringify({ type: 'hello', version: '1.0.0', browser: 'chrome' }));
@@ -43,13 +43,13 @@ function connect() {
     try {
       msg = JSON.parse(event.data);
     } catch {
-      console.error('[ClaudeClaw] Invalid JSON from server:', event.data);
+      console.error('[UAB] Invalid JSON from server:', event.data);
       return;
     }
 
     // Welcome message from server
     if (msg.type === 'welcome') {
-      console.log('[ClaudeClaw] Server acknowledged connection');
+      console.log('[UAB] Server acknowledged connection');
       return;
     }
 
@@ -71,14 +71,14 @@ function connect() {
   };
 
   ws.onclose = () => {
-    console.log('[ClaudeClaw] Disconnected from UAB server');
+    console.log('[UAB] Disconnected from UAB server');
     ws = null;
     chrome.alarms.clear('keepalive');
     scheduleReconnect();
   };
 
   ws.onerror = (err) => {
-    console.error('[ClaudeClaw] WebSocket error:', err);
+    console.error('[UAB] WebSocket error:', err);
     // onclose will fire after this
   };
 }
@@ -1072,4 +1072,4 @@ function storageKeys(type) {
 // ─── Initialize ──────────────────────────────────────────────
 
 connect();
-console.log('[ClaudeClaw] Extension service worker loaded');
+console.log('[UAB] Extension service worker loaded');

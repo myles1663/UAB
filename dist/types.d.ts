@@ -5,7 +5,7 @@
  * giving agents a single consistent interface to any desktop app.
  *
  * This module is framework-agnostic — it can be imported by
- * ClaudeClaw, Lancelot, or any other AI agent runtime.
+ * any AI agent runtime.
  */
 export interface UIElement {
     id: string;
@@ -140,3 +140,4 @@ export interface ControlRoute {
     connection: PluginConnection;
     fallbacks: ControlMethod[];
 }
+//# sourceMappingURL=types.d.ts.map

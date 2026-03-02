@@ -52,7 +52,7 @@
   "dependencies": {
     "ws": "^8.16.0"
   },
-  "author": "ClaudeClaw",
+  "author": "myles1663",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
@@ -64,5 +64,8 @@
   "bugs": {
     "url": "https://github.com/myles1663/UAB/issues"
   },
-  "homepage": "https://github.com/myles1663/UAB#readme"
+  "homepage": "https://github.com/myles1663/UAB#readme",
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
 }

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ClaudeClaw Bridge",
+  "name": "UAB Bridge",
   "version": "1.0.0",
-  "description": "Bridges Chrome browser APIs to ClaudeClaw UAB for desktop automation",
+  "description": "Bridges Chrome browser APIs to the Universal App Bridge for desktop automation",
   "permissions": [
     "tabs",
     "cookies",

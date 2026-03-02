@@ -2,7 +2,7 @@
 /**
  * UAB Package Build Script
  *
- * 1. Builds the parent ClaudeClaw project (tsc)
+ * 1. Builds the UAB project (tsc)
  * 2. Copies compiled UAB output into packages/uab/dist/
  * 3. Result is a standalone npm-publishable package
  */

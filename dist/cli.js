@@ -13,7 +13,7 @@
  *
  * All output is JSON for easy parsing by AI agents.
  * This CLI is stateless — each invocation creates fresh connections.
- * For persistent connections, use the UAB service via ClaudeClaw.
+ * For persistent connections, use the UAB service programmatic API.
  */
 import { FrameworkDetector } from './detector.js';
 import { PluginManager } from './plugins/base.js';
