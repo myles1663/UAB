@@ -247,4 +247,19 @@ Agent Runtime (Claude / GPT / Any Agent)
 
 ## License
 
-MIT
+Universal App Bridge is licensed under the **Business Source License 1.1**.
+
+**Permitted:** Personal use, academic research, evaluation, testing,
+open source projects, and use within the Lancelot ecosystem.
+
+**Requires commercial license:** Commercial agent runtimes, SaaS
+platforms, enterprise internal use (25+ employees), competing
+products, and deployments to 5+ users/devices.
+
+**Patent notice:** This software is subject to pending patent
+applications. The Change Date license conversion does not grant
+patent rights beyond those stated in the License.
+
+Each version converts to Apache 2.0 four years after release.
+
+See [LICENSE](./LICENSE) for full terms.

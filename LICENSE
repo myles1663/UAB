@@ -1,21 +1,245 @@
-MIT License
+BUSINESS SOURCE LICENSE 1.1
 
-Copyright (c) 2025 Myles
+Universal App Bridge (UAB)
+License Agreement
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+License Parameters
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Licensor: Myles Gabriel
+Licensed Work: Universal App Bridge (UAB), including all source code,
+  documentation, framework plugins, the framework detection system, the
+  unified API abstraction layer, the control router, and all associated
+  tooling. The Licensed Work is copyright 2026 Myles Gabriel.
+Change Date: Four (4) years from the date of each published version of
+  the Licensed Work. For example, version 1.0.0 published on March 1, 2026
+  would convert on March 1, 2030.
+Change License: Apache License, Version 2.0
+Additional Use Grant: See Section 2 below.
+
+
+Section 1: Terms
+
+The Licensor hereby grants you the right to copy, modify, create derivative
+works, redistribute, and make non-production use of the Licensed Work. The
+Licensor may make an Additional Use Grant, above, permitting limited
+production use.
+
+Effective on the Change Date, or the fourth anniversary of the first
+publicly available distribution of a specific version of the Licensed Work,
+whichever comes first, the Licensor hereby grants you rights under the terms
+of the Change License, and the rights granted in the paragraph above
+terminate.
+
+If your use of the Licensed Work does not comply with the requirements
+currently in effect as described in this License, you must purchase a
+commercial license from the Licensor, its affiliated entities, or authorized
+resellers, or you must refrain from using the Licensed Work.
+
+All copies of the original and modified Licensed Work, and derivative works
+of the Licensed Work, are subject to this License. This License applies
+separately for each version of the Licensed Work and the Change Date may
+vary for each version of the Licensed Work released by Licensor.
+
+You must conspicuously display this License on each original or modified
+copy of the Licensed Work. If you receive the Licensed Work in original or
+modified form from a third party, the terms and conditions set forth in this
+License apply to your use of that work.
+
+Any use of the Licensed Work in violation of this License will automatically
+terminate your rights under this License for the current and all other
+versions of the Licensed Work.
+
+This License does not grant you any right in any trademark or logo of
+Licensor or its affiliates (provided that you may use a trademark or logo of
+Licensor as expressly required by this License).
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS PROVIDED ON
+AN "AS IS" BASIS. LICENSOR HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS,
+EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION) WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND
+TITLE.
+
+
+Section 2: Additional Use Grant
+
+The following uses of the Licensed Work are permitted in production
+environments without a commercial license:
+
+2.1 Permitted Uses (No Commercial License Required)
+
+- Lancelot Ecosystem Use. Integration with the Lancelot governed autonomy
+  platform and its associated ecosystem products (including TradeOS and Ada)
+  developed by the Licensor.
+
+- Personal Non-Commercial Use. Use of the Licensed Work for personal,
+  non-commercial purposes by individual developers on their own machines,
+  provided no revenue is generated directly or indirectly from such use.
+
+- Academic and Research Use. Use of the Licensed Work in academic research,
+  educational institutions, and non-profit organizations, provided results
+  and findings may be published but the Licensed Work itself is not
+  redistributed in a commercial product.
+
+- Evaluation and Testing. Use of the Licensed Work for internal evaluation,
+  testing, prototyping, proof-of-concept development, benchmarking, and
+  security auditing, provided such use does not serve production workloads
+  or end users.
+
+- Open Source Projects. Use of the Licensed Work in open source projects
+  licensed under OSI-approved licenses, provided the open source project
+  does not offer a paid/commercial version that incorporates the Licensed
+  Work, and provided the open source project itself is not primarily a
+  wrapper, reskin, or thin abstraction over the Licensed Work's core
+  functionality.
+
+2.2 Restricted Uses (Commercial License Required)
+
+The following uses require a separate commercial license agreement with the
+Licensor:
+
+- Commercial Agent Runtimes. Incorporating, embedding, bundling, or linking
+  the Licensed Work (or any substantial portion thereof) into any commercial
+  software product, agent runtime, agent framework, automation platform, or
+  AI system that is sold, licensed, offered as a service, or otherwise
+  distributed for commercial purposes.
+
+- Service Offerings. Offering the functionality of the Licensed Work, in
+  whole or in part, as a service to third parties, whether as a standalone
+  service, as part of a platform, or integrated into a larger offering. This
+  includes but is not limited to: hosted agent control services, remote
+  desktop automation services, cloud-based app interaction platforms, and
+  managed automation services.
+
+- Competing Products. Offering the Licensed Work, or a substantially similar
+  product derived from the Licensed Work, as a competing product, library,
+  SDK, or framework that provides framework-level application hooking,
+  unified application control interfaces, or multi-framework introspection
+  capabilities.
+
+- Scale Deployment. Using the Licensed Work in any product or service
+  deployed to more than five (5) unique end users or devices without a
+  commercial license, regardless of whether the product or service is
+  offered for a fee.
+
+- Enterprise Internal Use. Using the Licensed Work to provide internal
+  automation, tooling, or agent capabilities within a commercial
+  organization where such use directly or indirectly generates revenue,
+  reduces costs, or provides operational advantage, and where the
+  organization has more than twenty-five (25) employees.
+
+2.3 Clarifications
+
+- The determination of whether a use is "commercial" shall be interpreted
+  broadly. If the Licensed Work contributes to revenue generation, cost
+  reduction, or competitive advantage for a for-profit entity, it is
+  considered commercial use.
+
+- Using the Licensed Work to build, train, or improve a competing product
+  constitutes a Restricted Use even if the Licensed Work itself is not
+  distributed.
+
+- The Licensor reserves the right to grant additional use permissions on a
+  case-by-case basis through written agreements.
+
+- If you are uncertain whether your intended use requires a commercial
+  license, contact the Licensor for clarification.
+
+
+Section 3: Patent Notice
+
+The Licensed Work is the subject of one or more pending patent applications
+filed by the Licensor. This License does not grant any express or implied
+license under any patent claims owned or controlled by the Licensor, except
+to the extent necessary to exercise the rights expressly granted in Section
+1 and Section 2 above.
+
+Without limiting the foregoing, the following aspects of the Licensed Work
+are covered by pending patent applications and may not be independently
+reimplemented, reproduced, or practiced without a separate patent license
+from the Licensor:
+
+- The framework detection system for identifying UI toolkit composition of
+  running applications through library signature analysis, process metadata
+  inspection, and binary structure evaluation.
+
+- The unified API abstraction layer that normalizes heterogeneous
+  framework-specific introspection interfaces into a single standardized
+  control interface.
+
+- The hook injection and management system for establishing runtime
+  introspection connections to applications across multiple UI frameworks
+  through framework-specific plugin architectures.
+
+- The multi-method control router that dynamically selects and falls back
+  between control methods (direct API, framework hooks, accessibility APIs,
+  vision-based control) based on availability, reliability, and capability
+  assessment.
+
+- The integrated system combining framework detection, hook management,
+  unified abstraction, and fallback routing into a cohesive application
+  control runtime.
+
+These patent claims are independent of and additional to the copyright
+protections of this License. Expiration of this License's restrictions on
+the Change Date does not grant any patent license beyond what is stated
+here.
+
+
+Section 4: Commercial Licensing
+
+Commercial licenses are available from the Licensor under separate terms.
+Commercial license options include:
+
+4.1 Standard Commercial License
+For companies building commercial products that incorporate the Licensed
+Work. Includes rights to embed, distribute, and use the Licensed Work in
+production. Pricing based on deployment scale and use case. Includes patent
+license for the specific commercial use case.
+
+4.2 Enterprise License
+For large organizations requiring internal deployment across multiple teams,
+products, or subsidiaries. Includes broader patent license, priority
+support, and custom integration assistance. Annual licensing with
+volume-based pricing.
+
+4.3 OEM / Reseller License
+For companies that wish to bundle the Licensed Work as part of their own
+product offering to their customers. Includes redistribution rights,
+co-branding options, and revenue-sharing arrangements. Requires separate
+negotiation.
+
+
+Section 5: Contributor License Agreement
+
+Any contributions to the Licensed Work (including but not limited to pull
+requests, patches, bug fixes, documentation, and framework plugins) require
+execution of the Licensor's Contributor License Agreement (CLA) prior to
+acceptance.
+
+By submitting a contribution, the contributor grants the Licensor a
+perpetual, worldwide, non-exclusive, royalty-free, irrevocable license to
+use, reproduce, modify, distribute, sublicense, and otherwise exploit the
+contribution in any form, including the right to relicense the contribution
+under different license terms.
+
+This requirement ensures the Licensor maintains the ability to offer the
+Licensed Work under commercial license terms, enforce patent rights, and
+manage the licensing structure of the project over time.
+
+
+Section 6: Enforcement and Remedies
+
+The Licensor reserves all rights to enforce this License and any associated
+patent rights through all available legal channels. Violations of this
+License may result in:
+
+- Immediate termination of all rights granted under this License.
+- Injunctive relief and damages for unauthorized commercial use.
+- Separate patent infringement claims for unauthorized practice of patented
+  methods.
+- Recovery of legal fees and costs associated with enforcement actions.
+
+The Licensor encourages good-faith resolution of licensing questions prior to
+enforcement. If you believe you may be in violation of this License, contact
+the Licensor to discuss commercial licensing options.
