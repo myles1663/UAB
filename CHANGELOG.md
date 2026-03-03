@@ -2,6 +2,30 @@
 
 All notable changes to Universal App Bridge will be documented in this file.
 
+## [0.9.0] - 2026-03-03
+
+### Added
+
+- **Vision Fallback Plugin** — Screenshot + AI + coordinate-based input injection as the ultimate last resort. Like Anthropic's computer use tool.
+  - `VisionPlugin` — Priority 5 in the cascade, works with ANY visible application
+  - `VisionAnalyzer` — Sends screenshots to Claude Vision API for UI element detection with bounding boxes
+  - `VisionConnection` — Full PluginConnection implementation: enumerate, query, act, state
+  - Coordinate-based input injection via Win32 API (mouse clicks, keyboard, window management)
+  - Analysis caching (8s TTL) to avoid redundant API calls for rapid enumerate→query sequences
+  - Comprehensive element type mapping (24 types with aliases) and action inference
+  - Screenshot capture with base64 encoding for API calls + file persistence for audit
+- **Automatic fallback integration** — ControlRouter now includes Vision as the final fallback after Win-UIA fails
+  - Gracefully degrades: Framework Hook → Accessibility (Win-UIA) → Vision (AI)
+  - Only activated when `ANTHROPIC_API_KEY` is configured (not added to cascade otherwise)
+- New dependency: `@anthropic-ai/sdk` for Claude Vision API access
+
+### Changed
+
+- ControlRouter cascade extended from 4 to 5 priority levels
+- Architecture documentation updated with Vision plugin details
+- Test suite expanded: 172 tests (17 new vision tests)
+- Package version bumped to 0.9.0
+
 ## [0.8.0] - 2026-03-03
 
 ### Added

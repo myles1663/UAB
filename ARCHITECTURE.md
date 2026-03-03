@@ -54,9 +54,11 @@ UAB sits between the agent runtime and the desktop OS. It provides a unified API
 │  │  │   Qt     │ │   GTK    │ │  Java    │ │ Flutter  ││    │
 │  │  │  (UIA)   │ │  (UIA)   │ │(JAB→UIA) │ │  (UIA)   ││    │
 │  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘│    │
-│  │  ┌──────────┐                                        │    │
-│  │  │ Win-UIA  │ ← Universal fallback                   │    │
-│  │  └──────────┘                                        │    │
+│  │  ┌──────────┐ ┌──────────┐                             │    │
+│  │  │ Win-UIA  │ │  Vision  │                             │    │
+│  │  │(A11y fb) │ │(AI last  │                             │    │
+│  │  │          │ │ resort)  │                             │    │
+│  │  └──────────┘ └──────────┘                             │    │
 │  └───────────────────────────────────────────────────────┘    │
 │                                                              │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐   │
@@ -417,19 +419,26 @@ Priority 3: Framework-Specific Plugin
    │   fail
    ▼
 Priority 4: Windows UI Automation
-   │   Universal fallback. Works with ANY windowed Windows app.
-   │   Coverage: Everything
-   │   (always succeeds for windowed apps)
+   │   Accessibility API fallback. Works with ANY windowed Windows app.
+   │   Coverage: Everything with a window
+   │   fail
+   ▼
+Priority 5: Vision (Screenshot + AI)
+   │   Last resort. Screenshot → Claude Vision API → coordinate input.
+   │   Like Anthropic's computer use tool. Expensive but truly universal.
+   │   Coverage: Anything visible on screen
+   │   (requires ANTHROPIC_API_KEY)
 ```
 
 ### Why This Order?
 
-| Method | Speed | Fidelity | Coverage | Disruption |
-|--------|-------|----------|----------|------------|
-| Chrome Extension | Fastest | Perfect | Chromium only | None (already installed) |
-| CDP (browser) | Fast | High | Chromium only | Requires debug flag |
-| Framework Hook | Fast | High | Framework-specific | Sometimes requires app relaunch |
-| Win-UIA | Moderate | Good | Universal | None |
+| Method | Speed | Fidelity | Coverage | Cost | Disruption |
+|--------|-------|----------|----------|------|------------|
+| Chrome Extension | Fastest | Perfect | Chromium only | Free | None (already installed) |
+| CDP (browser) | Fast | High | Chromium only | Free | Requires debug flag |
+| Framework Hook | Fast | High | Framework-specific | Free | Sometimes requires app relaunch |
+| Win-UIA | Moderate | Good | Universal | Free | None |
+| **Vision** | **Slow** | **Variable** | **Universal** | **API call** | **None** |
 
 ### Automatic Fallback
 
@@ -444,12 +453,16 @@ Agent: uab.act(pid, 'btn-1', 'click')
         └───────┬───────┘
                 │ automatic fallback
         ┌───────┴───────┐
-        │   Win-UIA     │ ──▶ Success ✓
+        │   Win-UIA     │ ──▶ UIA pattern error!
+        └───────┬───────┘
+                │ automatic fallback
+        ┌───────┴───────┐
+        │    Vision     │ ──▶ Screenshot → AI → Click at (x,y) ✓
         └───────────────┘
                 │
                 ▼
         Agent gets ActionResult (success)
-        (never knew about the fallback)
+        (never knew about the fallbacks)
 ```
 
 The `RoutedConnection` class wraps any `PluginConnection` and catches failures, transparently falling back to the next available method.
@@ -543,10 +556,14 @@ async connect(app: DetectedApp): Promise<RoutedConnection> {
     }
   }
 
-  // 4. Universal fallback: Win-UIA works for any windowed app
+  // 4. Accessibility fallback: Win-UIA works for any windowed app
   const uia = this.pluginManager.getPlugin('win-uia');
   const conn = await uia.connect(app);
   return new RoutedConnection(conn, this, app);
+
+  // 5. Vision fallback (last resort): Screenshot → AI → Coordinate input
+  // Only used if both framework plugins AND UIA fail
+  // Requires ANTHROPIC_API_KEY to be configured
 }
 ```
 
@@ -589,7 +606,10 @@ Plugins are registered in the `UABConnector.start()` method in strict priority o
 6. GtkPlugin         — GTK via UIA bridge
 7. JavaPlugin        — Java via JAB→UIA bridge
 8. FlutterPlugin     — Flutter via UIA bridge
-9. WinUIAPlugin      — Universal fallback (ALWAYS returns canHandle=true)
+9. WinUIAPlugin      — Accessibility fallback (ALWAYS returns canHandle=true)
+10. VisionPlugin     — Vision fallback (screenshot + Claude Vision API + coordinate input)
+                        Last resort — expensive but truly universal.
+                        Only available when ANTHROPIC_API_KEY is configured.
 ```
 
 ### Plugin Details
