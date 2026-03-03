@@ -40,6 +40,7 @@
  * ```
  */
 
+import { detectEnvironment, getDefaults } from './environment.js';
 import { FrameworkDetector } from './detector.js';
 import { PluginManager } from './plugins/base.js';
 import { ElectronPlugin } from './plugins/electron/index.js';
@@ -69,14 +70,16 @@ import type {
 export interface ConnectorOptions {
   /** Directory for JSON profile persistence. Default: "data/uab-profiles" */
   profileDir?: string;
-  /** Enable persistent connections with health monitoring. Default: false (stateless) */
+  /** Enable persistent connections with health monitoring. Default: auto-detected from environment */
   persistent?: boolean;
-  /** Enable Chrome extension WebSocket bridge. Default: false */
+  /** Enable Chrome extension WebSocket bridge. Default: auto-detected from environment */
   extensionBridge?: boolean;
   /** Load existing profiles on start. Default: true */
   loadProfiles?: boolean;
-  /** Max actions per minute per PID (rate limiting). Default: 100 */
+  /** Max actions per minute per PID (rate limiting). Default: auto-detected from environment */
   rateLimit?: number;
+  /** Force a specific runtime mode instead of auto-detecting. */
+  mode?: 'desktop' | 'server' | 'container';
 }
 
 // ─── Connection Info ────────────────────────────────────────────
@@ -104,16 +107,20 @@ export class UABConnector {
   private connectionMgr: ConnectionManager | null = null;
   private extensionServer: ExtensionWSServer | null = null;
 
-  private opts: Required<ConnectorOptions>;
+  private opts: Required<Omit<ConnectorOptions, 'mode'>> & { mode: string };
   private started = false;
 
   constructor(options?: ConnectorOptions) {
+    // Auto-detect environment defaults if not explicitly set
+    const envDefaults = getDefaults(options?.mode ?? detectEnvironment().mode);
+
     this.opts = {
       profileDir: options?.profileDir || 'data/uab-profiles',
-      persistent: options?.persistent ?? false,
-      extensionBridge: options?.extensionBridge ?? false,
+      persistent: options?.persistent ?? envDefaults.persistent,
+      extensionBridge: options?.extensionBridge ?? envDefaults.extensionBridge,
       loadProfiles: options?.loadProfiles ?? true,
-      rateLimit: options?.rateLimit ?? 100,
+      rateLimit: options?.rateLimit ?? envDefaults.rateLimit,
+      mode: options?.mode ?? detectEnvironment().mode,
     };
 
     this.registry = new AppRegistry({ profileDir: this.opts.profileDir });

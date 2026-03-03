@@ -20,6 +20,8 @@ Complete reference for every public interface in Universal App Bridge.
 - [ControlRouter](#controlrouter) — Method cascading & fallback
 - [PluginManager](#pluginmanager) — Plugin registry
 - [CLI Commands](#cli-commands) — Command-line interface
+- [UABServer](#uabserver) — HTTP server for remote access
+- [Environment Detection](#environment-detection) — Runtime auto-detection
 
 ---
 
@@ -820,3 +822,134 @@ All commands output JSON. Usage: `node dist/uab/cli.js <command> [args]`
 | `ext-status` | — | Check extension bridge status |
 | `ext-install` | — | Extension install guide |
 | `help` | — | Show all commands |
+
+### Server & Environment
+
+| Command | Args | Description |
+|---------|------|-------------|
+| `serve` | `[--port 3100] [--host 127.0.0.1] [--api-key KEY]` | Start HTTP server |
+| `env` | — | Show detected environment and defaults |
+
+---
+
+## UABServer
+
+**Import:** `import { UABServer } from 'universal-app-bridge/server'`
+
+HTTP server that wraps UABConnector for remote access. Zero dependencies beyond Node's built-in `http` module.
+
+### Constructor
+
+```typescript
+new UABServer(options?: ServerOptions)
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `port` | `number` | `3100` | Port to listen on |
+| `host` | `string` | `'127.0.0.1'` | Bind address (localhost-only by default) |
+| `apiKey` | `string` | — | If set, requires `X-API-Key` header on all requests |
+| `connector` | `ConnectorOptions` | Auto-detected | Override connector settings |
+| `maxBodySize` | `number` | `1048576` | Max request body size in bytes (1MB) |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `start()` | `Promise<void>` | Start the HTTP server |
+| `stop()` | `Promise<void>` | Stop and clean up |
+| `running` | `boolean` | Whether server is listening |
+| `address` | `string` | Full server URL |
+
+### Endpoints
+
+#### Discovery
+
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| POST | `/scan` | `{ electronOnly?: boolean }` | Scan for apps |
+| POST | `/apps` | `{ framework?: string }` | List known apps |
+| POST | `/find` | `{ query: string }` | Search by name |
+
+#### Connection & Interaction
+
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| POST | `/connect` | `{ target: string \| number }` | Connect to app |
+| POST | `/disconnect` | `{ pid: number }` | Disconnect |
+| POST | `/enumerate` | `{ pid: number, maxDepth?: number }` | Get UI tree |
+| POST | `/query` | `{ pid: number, selector?: ElementSelector }` | Search elements |
+| POST | `/act` | `{ pid: number, elementId?: string, action: string, params?: object }` | Perform action |
+| POST | `/state` | `{ pid: number }` | Get app state |
+
+#### Keyboard, Window & Screenshot
+
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| POST | `/keypress` | `{ pid: number, key: string }` | Send keypress |
+| POST | `/hotkey` | `{ pid: number, keys: string \| string[] }` | Send hotkey |
+| POST | `/window` | `{ pid: number, action: string, params?: object }` | Window control |
+| POST | `/screenshot` | `{ pid: number, outputPath?: string }` | Capture screenshot |
+
+#### Diagnostics
+
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| GET | `/health` | — | Health check + environment info |
+| GET | `/info` | — | API info + available endpoints |
+| POST | `/cache-stats` | — | Cache hit/miss stats |
+| POST | `/audit-log` | `{ limit?: number }` | Recent audit entries |
+| POST | `/health-summary` | — | Connection health summary |
+| POST | `/environment` | — | Runtime environment details |
+
+---
+
+## Environment Detection
+
+**Import:** `import { detectEnvironment, getDefaults, env } from 'universal-app-bridge/environment'`
+
+### `detectEnvironment(): EnvironmentInfo`
+
+Returns detected runtime context (cached after first call).
+
+```typescript
+interface EnvironmentInfo {
+  mode: 'desktop' | 'server' | 'container';
+  hasDesktop: boolean;       // Whether a desktop session is reachable
+  sessionId: number;         // Windows session ID (0 = non-interactive)
+  isContainer: boolean;      // Docker, WSL, etc.
+  needsBridge: boolean;      // Whether Session 0→1 bridge is needed
+  platform: string;
+  arch: string;
+  nodeVersion: string;
+}
+```
+
+### `getDefaults(mode?): EnvironmentDefaults`
+
+Returns environment-appropriate defaults for UABConnector.
+
+```typescript
+interface EnvironmentDefaults {
+  persistent: boolean;         // Desktop: true, Server/Container: false
+  extensionBridge: boolean;    // Desktop: true, Server/Container: false
+  rateLimit: number;           // Desktop: 100, Server: 60, Container: 30
+  cacheTTLMultiplier: number;  // Desktop: 1, Server: 2, Container: 3
+}
+```
+
+### `env` (Proxy)
+
+Convenience proxy that auto-calls `detectEnvironment()`:
+
+```typescript
+import { env } from 'universal-app-bridge/environment';
+
+if (env.mode === 'desktop') { /* interactive mode */ }
+if (env.hasDesktop) { /* can reach desktop session */ }
+if (env.needsBridge) { /* using Task Scheduler bridge */ }
+```
+
+### `resetEnvironment(): void`
+
+Clear cached detection (for testing).

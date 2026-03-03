@@ -15,6 +15,7 @@
 - [Data Flow: End-to-End](#data-flow-end-to-end)
 - [Production Hardening](#production-hardening)
 - [Session Bridge](#session-bridge)
+- [Desktop + Server Dual-Mode](#desktop--server-dual-mode)
 
 ---
 
@@ -902,6 +903,84 @@ Session 0                        Session 1
 
 ---
 
+## Desktop + Server Dual-Mode
+
+UAB v0.8.0 introduces automatic environment detection. ONE codebase works in desktop, server, and container contexts without configuration changes.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Agent Frontends                              │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌─────────────┐   │
+│  │  Telegram Bot    │  │  HTTP Server     │  │   Bash CLI  │   │
+│  │ (desktop agent)  │  │  (server.ts)     │  │  (any agent)│   │
+│  └────────┬─────────┘  └────────┬─────────┘  └──────┬──────┘   │
+│           │                     │                    │          │
+├───────────┼─────────────────────┼────────────────────┼──────────┤
+│           ▼                     ▼                    ▼          │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │            Environment Detection (environment.ts)        │   │
+│  │                                                          │   │
+│  │  Desktop (Session 1+)  │  Server (Session 0)  │ Container│   │
+│  │  • Persistent conns    │  • Stateless          │ • Minimal│   │
+│  │  • Extension bridge    │  • Session bridge     │ • Limited│   │
+│  │  • 100/min rate limit  │  • 60/min rate limit  │ • 30/min │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                            │                                    │
+│                            ▼                                    │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │              UABConnector (auto-tuned per environment)    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                            │                                    │
+│                            ▼                                    │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Session Bridge (ps-exec.ts) — Session 0→1 when needed   │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                            │                                    │
+│                            ▼                                    │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Plugin Manager → Framework APIs → Desktop Applications   │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### How It Works
+
+1. **On startup**, `environment.ts` detects the runtime:
+   - Checks Windows session ID (0 = server, 1+ = desktop)
+   - Checks for container indicators (Docker, WSL, cgroup)
+   - Verifies if desktop is reachable (direct or via bridge)
+
+2. **UABConnector auto-tunes** based on the detected environment:
+   - Desktop: persistent connections, extension bridge enabled, full rate limit
+   - Server: stateless connections, no extension bridge, lower rate limit
+   - Container: minimal config, aggressive caching
+
+3. **The HTTP server** (`server.ts`) wraps UABConnector:
+   - Accepts REST calls from remote agents
+   - Auto-connects on demand (agents don't need to manage connections)
+   - Localhost-only by default, optional API key auth
+   - CORS headers for browser-based agents
+
+4. **Session Bridge** kicks in automatically when in Session 0:
+   - Uses Windows Task Scheduler with `/IT` flag
+   - Executes PowerShell in the user's interactive session
+   - Returns results via temp file I/O
+   - Transparent to the rest of UAB
+
+### When to Use Each Mode
+
+| Scenario | Frontend | Mode |
+|----------|----------|------|
+| Local development | CLI / Library | Desktop (auto) |
+| Telegram bot on same machine | Telegram bot | Desktop (auto) |
+| Remote agent via SSH | HTTP Server | Server (auto) |
+| CI/CD pipeline | CLI | Server (auto) |
+| Docker container | HTTP Server | Container (auto) |
+
+---
+
 ## Key Design Decisions
 
 See [docs/design-decisions.md](docs/design-decisions.md) for the full rationale behind:
@@ -911,3 +990,4 @@ See [docs/design-decisions.md](docs/design-decisions.md) for the full rationale 
 - Why PowerShell instead of native Node.js bindings
 - Why the plugin cascade instead of capability negotiation
 - Why the connector pattern for framework independence
+- Why ONE codebase for desktop and server instead of separate builds

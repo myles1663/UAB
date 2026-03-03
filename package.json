@@ -1,7 +1,7 @@
 {
   "name": "universal-app-bridge",
-  "version": "0.7.0",
-  "description": "Framework-level desktop app control for AI agents. Hook into Chrome, Electron, Qt, GTK, WPF, Flutter, Java, and Office apps with a unified API.",
+  "version": "0.8.0",
+  "description": "Smart function discovery and framework-level desktop app control for AI agents. Desktop + server dual-mode. Hook into Chrome, Electron, Qt, GTK, WPF, Flutter, Java, and Office apps with a unified API.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,6 +20,14 @@
     "./connector": {
       "types": "./dist/connector.d.ts",
       "import": "./dist/connector.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./environment": {
+      "types": "./dist/environment.d.ts",
+      "import": "./dist/environment.js"
     }
   },
   "files": [

@@ -19,7 +19,7 @@
  * @packageDocumentation
  */
 
-// ─── Connector (Framework-Independent API) ──────────────────────
+// ─── Framework-Independent Connector ─────────────────────────────
 export { UABConnector } from './connector.js';
 export type { ConnectorOptions, ConnectionInfo } from './connector.js';
 
@@ -27,7 +27,7 @@ export type { ConnectorOptions, ConnectionInfo } from './connector.js';
 export { AppRegistry } from './registry.js';
 export type { AppProfile, RegistrySnapshot, RegistryOptions } from './registry.js';
 
-// ─── Core Service (ClaudeClaw Integration) ──────────────────────
+// ─── Core Service (ClaudeClaw integration) ───────────────────────
 export { UABService, uab } from './service.js';
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -98,15 +98,20 @@ export type {
 // ─── Plugins ────────────────────────────────────────────────────
 export { PluginManager } from './plugins/base.js';
 export { ElectronPlugin } from './plugins/electron/index.js';
-export { BrowserPlugin } from './plugins/browser/index.js';
-export { ChromeExtPlugin } from './plugins/chrome-ext/index.js';
-export { ExtensionWSServer } from './plugins/chrome-ext/ws-server.js';
 export { WinUIAPlugin } from './plugins/win-uia/index.js';
 export { QtPlugin } from './plugins/qt/index.js';
 export { GtkPlugin } from './plugins/gtk/index.js';
 export { JavaPlugin } from './plugins/java/index.js';
 export { FlutterPlugin } from './plugins/flutter/index.js';
 export { OfficePlugin } from './plugins/office/index.js';
+
+// ─── Environment Detection ──────────────────────────────────────
+export { detectEnvironment, getDefaults, resetEnvironment, env } from './environment.js';
+export type { RuntimeMode, EnvironmentInfo, EnvironmentDefaults } from './environment.js';
+
+// ─── HTTP Server (Server-Side Access) ───────────────────────────
+export { UABServer } from './server.js';
+export type { ServerOptions } from './server.js';
 
 // ─── Logger ─────────────────────────────────────────────────────
 export { createLogger, closeLogger } from './logger.js';

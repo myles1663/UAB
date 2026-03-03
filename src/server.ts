@@ -1,0 +1,420 @@
+/**
+ * UAB HTTP Server — Server-side endpoint for remote UAB access.
+ *
+ * Wraps UABConnector in a lightweight HTTP server so agents running
+ * on a different machine (or in a container) can control desktop apps
+ * on the host via REST calls.
+ *
+ * Architecture:
+ *   - Uses Node's built-in `http` module (ZERO dependencies)
+ *   - Each request gets its own context (stateless by default)
+ *   - Shared UABConnector instance with connection pooling
+ *   - JSON request/response only
+ *   - Localhost-only by default (security)
+ *
+ * Usage:
+ *   import { UABServer } from './server.js';
+ *   const server = new UABServer({ port: 3100 });
+ *   await server.start();
+ *   // Clients: POST http://localhost:3100/scan
+ *   //          POST http://localhost:3100/connect { "target": "notepad" }
+ *   //          POST http://localhost:3100/query { "pid": 1234, "selector": { "type": "button" } }
+ *   await server.stop();
+ *
+ * @example
+ * ```bash
+ * # From any HTTP client / agent:
+ * curl -X POST http://localhost:3100/scan
+ * curl -X POST http://localhost:3100/connect -d '{"target":"notepad"}'
+ * curl -X POST http://localhost:3100/query -d '{"pid":1234,"selector":{"type":"button"}}'
+ * curl -X POST http://localhost:3100/act -d '{"pid":1234,"elementId":"btn_1","action":"click"}'
+ * ```
+ */
+
+import { createServer, IncomingMessage, ServerResponse, Server } from 'http';
+import { UABConnector, type ConnectorOptions } from './connector.js';
+import { detectEnvironment, getDefaults, type EnvironmentInfo } from './environment.js';
+import type {
+  ActionType, ElementSelector, ElementType,
+} from './types.js';
+
+// ─── Types ────────────────────────────────────────────────────
+
+export interface ServerOptions {
+  /** Port to listen on. Default: 3100 */
+  port?: number;
+  /** Host to bind to. Default: '127.0.0.1' (localhost only) */
+  host?: string;
+  /** API key for authentication. If set, requires X-API-Key header. */
+  apiKey?: string;
+  /** Connector options override. Auto-detected if not set. */
+  connector?: ConnectorOptions;
+  /** Max request body size in bytes. Default: 1MB */
+  maxBodySize?: number;
+}
+
+interface RouteHandler {
+  (body: Record<string, unknown>, connector: UABConnector): Promise<unknown>;
+}
+
+// ─── Server ───────────────────────────────────────────────────
+
+export class UABServer {
+  private server: Server | null = null;
+  private connector: UABConnector;
+  private routes: Map<string, RouteHandler>;
+  private opts: Required<Omit<ServerOptions, 'connector' | 'apiKey'>> & { apiKey?: string };
+  private environment: EnvironmentInfo;
+
+  constructor(options?: ServerOptions) {
+    this.environment = detectEnvironment();
+    const defaults = getDefaults(this.environment.mode);
+
+    this.opts = {
+      port: options?.port ?? 3100,
+      host: options?.host ?? '127.0.0.1',
+      apiKey: options?.apiKey,
+      maxBodySize: options?.maxBodySize ?? 1024 * 1024, // 1MB
+    };
+
+    // Merge environment defaults with user overrides
+    this.connector = new UABConnector({
+      persistent: defaults.persistent,
+      extensionBridge: defaults.extensionBridge,
+      rateLimit: defaults.rateLimit,
+      ...options?.connector,
+    });
+
+    this.routes = new Map();
+    this.registerRoutes();
+  }
+
+  // ─── Lifecycle ──────────────────────────────────────────────
+
+  async start(): Promise<void> {
+    await this.connector.start();
+
+    return new Promise((resolve, reject) => {
+      this.server = createServer((req, res) => this.handleRequest(req, res));
+
+      this.server.on('error', reject);
+      this.server.listen(this.opts.port, this.opts.host, () => {
+        resolve();
+      });
+    });
+  }
+
+  async stop(): Promise<void> {
+    await this.connector.stop();
+
+    return new Promise((resolve) => {
+      if (this.server) {
+        this.server.close(() => resolve());
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  get running(): boolean {
+    return this.server?.listening ?? false;
+  }
+
+  get address(): string {
+    return `http://${this.opts.host}:${this.opts.port}`;
+  }
+
+  // ─── Request Handling ───────────────────────────────────────
+
+  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // CORS headers for browser-based agents
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    // Auth check
+    if (this.opts.apiKey) {
+      const provided = req.headers['x-api-key'];
+      if (provided !== this.opts.apiKey) {
+        this.sendError(res, 401, 'Invalid or missing API key');
+        return;
+      }
+    }
+
+    // Parse route
+    const path = (req.url || '/').replace(/\/$/, '') || '/';
+
+    // GET /health and /info don't need a body
+    if (req.method === 'GET') {
+      if (path === '/health') {
+        this.sendJSON(res, 200, {
+          status: 'ok',
+          environment: this.environment,
+          connector: this.connector.running,
+          uptime: process.uptime(),
+        });
+        return;
+      }
+      if (path === '/info') {
+        this.sendJSON(res, 200, {
+          name: 'Universal App Bridge Server',
+          version: '0.8.0',
+          environment: this.environment,
+          endpoints: [...this.routes.keys()].map(r => `POST ${r}`),
+        });
+        return;
+      }
+    }
+
+    // All other routes are POST
+    if (req.method !== 'POST') {
+      this.sendError(res, 405, 'Method not allowed. Use POST for API calls, GET for /health and /info.');
+      return;
+    }
+
+    const handler = this.routes.get(path);
+    if (!handler) {
+      this.sendError(res, 404, `Unknown endpoint: ${path}. GET /info for available endpoints.`);
+      return;
+    }
+
+    // Parse body
+    let body: Record<string, unknown>;
+    try {
+      body = await this.readBody(req);
+    } catch (err) {
+      this.sendError(res, 400, err instanceof Error ? err.message : 'Invalid request body');
+      return;
+    }
+
+    // Execute
+    try {
+      const result = await handler(body, this.connector);
+      this.sendJSON(res, 200, result);
+    } catch (err) {
+      this.sendError(res, 500, err instanceof Error ? err.message : 'Internal server error');
+    }
+  }
+
+  private async readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      let size = 0;
+
+      req.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > this.opts.maxBodySize) {
+          req.destroy();
+          reject(new Error(`Request body exceeds ${this.opts.maxBodySize} bytes`));
+          return;
+        }
+        chunks.push(chunk);
+      });
+
+      req.on('end', () => {
+        const raw = Buffer.concat(chunks).toString('utf-8').trim();
+        if (!raw) {
+          resolve({});
+          return;
+        }
+        try {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed !== 'object' || parsed === null) {
+            reject(new Error('Request body must be a JSON object'));
+            return;
+          }
+          resolve(parsed);
+        } catch {
+          reject(new Error('Invalid JSON in request body'));
+        }
+      });
+
+      req.on('error', reject);
+    });
+  }
+
+  private sendJSON(res: ServerResponse, status: number, data: unknown): void {
+    const body = JSON.stringify(data, null, 2);
+    res.writeHead(status);
+    res.end(body);
+  }
+
+  private sendError(res: ServerResponse, status: number, message: string): void {
+    this.sendJSON(res, status, { error: message });
+  }
+
+  // ─── Route Registration ─────────────────────────────────────
+
+  private registerRoutes(): void {
+    // Discovery
+    this.routes.set('/scan', async (_body, conn) => {
+      const electronOnly = _body.electronOnly === true;
+      const profiles = await conn.scan(electronOnly);
+      return {
+        count: profiles.length,
+        apps: profiles.map(p => ({
+          pid: p.pid, name: p.name, executable: p.executable,
+          framework: p.framework, confidence: p.confidence,
+          windowTitle: p.windowTitle,
+        })),
+      };
+    });
+
+    this.routes.set('/apps', async (_body, conn) => {
+      const profiles = conn.apps();
+      const framework = _body.framework as string | undefined;
+      const filtered = framework
+        ? profiles.filter(p => p.framework === framework)
+        : profiles;
+      return {
+        count: filtered.length,
+        apps: filtered.map(p => ({
+          pid: p.pid, name: p.name, executable: p.executable,
+          framework: p.framework, preferredMethod: p.preferredMethod,
+        })),
+      };
+    });
+
+    this.routes.set('/find', async (body, conn) => {
+      const query = body.query as string;
+      if (!query) throw new Error('Missing required field: query');
+      const profiles = await conn.find(query);
+      return {
+        query,
+        count: profiles.length,
+        apps: profiles.map(p => ({
+          pid: p.pid, name: p.name, executable: p.executable,
+          framework: p.framework, confidence: p.confidence,
+        })),
+      };
+    });
+
+    // Connection
+    this.routes.set('/connect', async (body, conn) => {
+      const target = body.target as string | number;
+      if (target === undefined) throw new Error('Missing required field: target (name or PID)');
+      const pid = typeof target === 'string' ? parseInt(target, 10) : target;
+      const info = !isNaN(pid)
+        ? await conn.connect(pid)
+        : await conn.connect(target as string);
+      return { connected: true, ...info };
+    });
+
+    this.routes.set('/disconnect', async (body, conn) => {
+      const pid = body.pid as number;
+      if (!pid) throw new Error('Missing required field: pid');
+      await conn.disconnect(pid);
+      return { disconnected: true, pid };
+    });
+
+    // UI Interaction
+    this.routes.set('/enumerate', async (body, conn) => {
+      const pid = body.pid as number;
+      if (!pid) throw new Error('Missing required field: pid');
+      const maxDepth = (body.maxDepth as number) || 3;
+      if (!conn.isConnected(pid)) await conn.connect(pid);
+      const elements = await conn.enumerate(pid, maxDepth);
+      return {
+        pid,
+        totalElements: conn.countElements(elements),
+        elements: conn.flattenTree(elements, maxDepth),
+      };
+    });
+
+    this.routes.set('/query', async (body, conn) => {
+      const pid = body.pid as number;
+      const selector = body.selector as ElementSelector;
+      if (!pid) throw new Error('Missing required field: pid');
+      if (!conn.isConnected(pid)) await conn.connect(pid);
+      const results = await conn.query(pid, selector || {});
+      return {
+        pid,
+        count: results.length,
+        elements: results.map(el => ({
+          id: el.id, type: el.type, label: el.label,
+          actions: el.actions, visible: el.visible, enabled: el.enabled,
+        })),
+      };
+    });
+
+    this.routes.set('/act', async (body, conn) => {
+      const pid = body.pid as number;
+      const elementId = (body.elementId as string) || '';
+      const action = body.action as ActionType;
+      if (!pid || !action) throw new Error('Missing required fields: pid, action');
+      if (!conn.isConnected(pid)) await conn.connect(pid);
+      const result = await conn.act(pid, elementId, action, body.params as any);
+      return { pid, elementId, action, ...result };
+    });
+
+    this.routes.set('/state', async (body, conn) => {
+      const pid = body.pid as number;
+      if (!pid) throw new Error('Missing required field: pid');
+      if (!conn.isConnected(pid)) await conn.connect(pid);
+      const state = await conn.state(pid);
+      return { pid, ...state };
+    });
+
+    // Keyboard & Window
+    this.routes.set('/keypress', async (body, conn) => {
+      const pid = body.pid as number;
+      const key = body.key as string;
+      if (!pid || !key) throw new Error('Missing required fields: pid, key');
+      if (!conn.isConnected(pid)) await conn.connect(pid);
+      const result = await conn.keypress(pid, key);
+      return { pid, key, ...result };
+    });
+
+    this.routes.set('/hotkey', async (body, conn) => {
+      const pid = body.pid as number;
+      const keys = body.keys as string | string[];
+      if (!pid || !keys) throw new Error('Missing required fields: pid, keys');
+      if (!conn.isConnected(pid)) await conn.connect(pid);
+      const result = await conn.hotkey(pid, keys);
+      return { pid, keys, ...result };
+    });
+
+    this.routes.set('/window', async (body, conn) => {
+      const pid = body.pid as number;
+      const action = body.action as string;
+      if (!pid || !action) throw new Error('Missing required fields: pid, action');
+      if (!conn.isConnected(pid)) await conn.connect(pid);
+      const result = await conn.window(pid, action, body.params as any);
+      return { pid, action, ...result };
+    });
+
+    this.routes.set('/screenshot', async (body, conn) => {
+      const pid = body.pid as number;
+      if (!pid) throw new Error('Missing required field: pid');
+      if (!conn.isConnected(pid)) await conn.connect(pid);
+      const result = await conn.screenshot(pid, body.outputPath as string);
+      return { pid, ...result };
+    });
+
+    // Diagnostics
+    this.routes.set('/cache-stats', async (_body, conn) => {
+      return conn.cacheStats();
+    });
+
+    this.routes.set('/audit-log', async (body, conn) => {
+      const limit = (body.limit as number) || 50;
+      return conn.auditLog(limit);
+    });
+
+    this.routes.set('/health-summary', async (_body, conn) => {
+      return conn.healthSummary();
+    });
+
+    // Environment
+    this.routes.set('/environment', async () => {
+      return this.environment;
+    });
+  }
+}

@@ -111,12 +111,63 @@ uab profiles
 # → Shows all known apps with framework info and preferred methods
 ```
 
+### As an HTTP Server (for remote / server-side agents)
+
+Run UAB as a REST API so agents on other machines, in containers, or in cloud environments can control desktop apps remotely:
+
+```bash
+# Start the server
+uab serve --port 3100
+
+# Or with authentication
+uab serve --port 3100 --api-key my-secret-key
+```
+
+```bash
+# From any HTTP client or remote agent:
+curl -X POST http://localhost:3100/scan
+curl -X POST http://localhost:3100/find -d '{"query":"notepad"}'
+curl -X POST http://localhost:3100/connect -d '{"target":"notepad"}'
+curl -X POST http://localhost:3100/query -d '{"pid":1234,"selector":{"type":"button"}}'
+curl -X POST http://localhost:3100/act -d '{"pid":1234,"elementId":"btn_1","action":"click"}'
+
+# Health check
+curl http://localhost:3100/health
+```
+
+```typescript
+// Or programmatically:
+import { UABServer } from 'universal-app-bridge/server';
+
+const server = new UABServer({ port: 3100, apiKey: 'secret' });
+await server.start();
+// Clients POST JSON to /scan, /connect, /query, /act, etc.
+```
+
+### Environment Auto-Detection
+
+UAB automatically detects its runtime context and tunes behavior accordingly:
+
+| Environment | Session | Persistence | Rate Limit | Extension Bridge |
+|-------------|---------|-------------|------------|-----------------|
+| **Desktop** | Session 1+ | Persistent connections | 100/min/PID | Enabled |
+| **Server** | Session 0 (SSH/service) | Stateless | 60/min/PID | Disabled |
+| **Container** | Docker/WSL | Stateless | 30/min/PID | Disabled |
+
+```bash
+# Check what UAB detected:
+uab env
+# → { "environment": { "mode": "desktop", "hasDesktop": true, ... }, "defaults": { ... } }
+```
+
+**ONE codebase, ZERO configuration** — UAB figures out where it's running and adapts.
+
 ## Architecture
 
 ```
 Agent Runtime (Claude / GPT / Any AI Agent)
          │
-    Library API  or  CLI (JSON output)
+    Library API  or  CLI (JSON)  or  HTTP Server (REST)
          │
 ┌────────┴───────────────────────────────────────────────────┐
 │              Universal App Bridge (UAB)                      │

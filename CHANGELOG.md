@@ -2,6 +2,36 @@
 
 All notable changes to Universal App Bridge will be documented in this file.
 
+## [0.8.0] - 2026-03-03
+
+### Added
+
+- **Desktop + Server Dual-Mode Architecture** — ONE codebase works in both interactive desktop sessions and non-interactive server/SSH contexts. No separate builds needed.
+- **Environment Detection (`environment.ts`)** — Automatic runtime detection with three modes:
+  - `desktop` — Interactive Windows session (Session 1+), full UIA/CDP access
+  - `server` — Non-interactive (SSH, service), uses Session 0→1 bridge via Task Scheduler
+  - `container` — Docker/WSL/Hyper-V, limited desktop access
+  - Auto-tunes connector defaults (persistence, rate limits, cache TTL) per environment
+- **HTTP Server (`server.ts`)** — Zero-dependency REST API for remote UAB access:
+  - All UAB operations exposed as JSON endpoints: `/scan`, `/apps`, `/find`, `/connect`, `/enumerate`, `/query`, `/act`, `/state`, `/keypress`, `/hotkey`, `/window`, `/screenshot`
+  - Diagnostics: `/cache-stats`, `/audit-log`, `/health-summary`, `/environment`
+  - Health check: `GET /health`, API listing: `GET /info`
+  - Optional API key authentication via `X-API-Key` header
+  - Localhost-only by default (security)
+  - CORS headers for browser-based agents
+- **CLI `serve` command** — Start the HTTP server from the command line: `uab serve [--port 3100] [--host 127.0.0.1] [--api-key secret]`
+- **CLI `env` command** — Show detected environment and auto-tuned defaults
+- **UABConnector auto-tuning** — Connector now auto-detects environment and applies optimal defaults for persistent connections, rate limiting, and extension bridge
+- New package exports: `universal-app-bridge/server`, `universal-app-bridge/environment`
+
+### Changed
+
+- UABConnector constructor now accepts optional `mode` parameter to override auto-detection
+- ConnectorOptions defaults are now environment-aware (desktop vs server vs container)
+- CLI version bumped to 0.8.0
+- Package description updated to reflect dual-mode capability
+- Documentation updated with server-side usage, environment detection, and HTTP API reference
+
 ## [0.7.0] - 2026-03-03
 
 ### Added

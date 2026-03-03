@@ -347,6 +347,70 @@ UAB_LOG_FILE=./uab.log      # Optional file logging
 
 ---
 
+## Server Mode (Remote Access)
+
+If your agent runs on a different machine or in a container, start UAB as an HTTP server:
+
+### Quick Start
+
+```bash
+# Start the server (localhost only, port 3100)
+uab serve
+
+# With authentication
+uab serve --port 3100 --api-key my-secret-key
+
+# Bind to all interfaces (for remote access — use with caution)
+uab serve --host 0.0.0.0 --api-key my-secret-key
+```
+
+### Making API Calls
+
+```bash
+# Health check
+curl http://localhost:3100/health
+
+# Scan for apps
+curl -X POST http://localhost:3100/scan
+
+# Find and connect to an app
+curl -X POST http://localhost:3100/find -d '{"query":"notepad"}'
+curl -X POST http://localhost:3100/connect -d '{"target":"notepad"}'
+
+# Query and interact
+curl -X POST http://localhost:3100/query -d '{"pid":1234,"selector":{"type":"button"}}'
+curl -X POST http://localhost:3100/act -d '{"pid":1234,"elementId":"btn_1","action":"click"}'
+```
+
+### Programmatic Server Usage
+
+```typescript
+import { UABServer } from 'universal-app-bridge/server';
+
+const server = new UABServer({
+  port: 3100,
+  apiKey: 'my-secret-key',
+});
+
+await server.start();
+console.log(`UAB Server running at ${server.address}`);
+
+// Clients can now POST to /scan, /connect, /query, /act, etc.
+```
+
+### Environment Detection
+
+Check what UAB detected about your runtime:
+
+```bash
+uab env
+# → { "environment": { "mode": "desktop", "hasDesktop": true, ... }, "defaults": { ... } }
+```
+
+UAB auto-tunes for desktop, server (SSH/service), and container environments — no config needed.
+
+---
+
 ## Troubleshooting
 
 ### "No apps detected"

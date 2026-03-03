@@ -557,12 +557,51 @@ async function main() {
         break;
       }
 
+      // ─── Server Mode ─────────────────────────────────────────
+      case 'serve': {
+        const { UABServer } = await import('./server.js');
+        const port = parseInt(flags.port || '3100', 10);
+        const host = flags.host || '127.0.0.1';
+        const apiKey = flags['api-key'] || undefined;
+
+        const server = new UABServer({ port, host, apiKey });
+        await server.start();
+        output({
+          status: 'running',
+          address: server.address,
+          authenticated: !!apiKey,
+          endpoints: 'GET /info for full list',
+        });
+
+        // Keep running until SIGINT
+        await new Promise<void>((resolve) => {
+          process.on('SIGINT', async () => {
+            await server.stop();
+            resolve();
+          });
+          process.on('SIGTERM', async () => {
+            await server.stop();
+            resolve();
+          });
+        });
+        break;
+      }
+
+      // ─── Environment Info ──────────────────────────────────────
+      case 'env': {
+        const { detectEnvironment, getDefaults } = await import('./environment.js');
+        const envInfo = detectEnvironment();
+        const defaults = getDefaults(envInfo.mode);
+        output({ environment: envInfo, defaults });
+        break;
+      }
+
       case 'help':
       default:
         output({
           name: 'Universal App Bridge CLI',
-          version: '0.7.0',
-          description: 'Framework-independent desktop app control for AI agents',
+          version: '0.8.0',
+          description: 'Framework-independent desktop app control for AI agents (desktop + server)',
           connectorCommands: {
             scan: 'Detect apps + save to registry (persists across invocations) [--electron]',
             apps: 'List known apps from registry (instant, no scanning) [--framework electron]',
@@ -610,6 +649,10 @@ async function main() {
             readEmails: 'Read Outlook emails (COM): act <pid> _ readEmails --folder Inbox --count 5',
             composeEmail: 'Create draft email (COM): act <pid> _ composeEmail --to addr --subject subj --body text',
             sendEmail: 'Send email (COM): act <pid> _ sendEmail --to addr --subject subj --body text',
+          },
+          serverCommands: {
+            serve: 'Start HTTP server: serve [--port 3100] [--host 127.0.0.1] [--api-key secret]',
+            env: 'Show detected environment and defaults (desktop/server/container)',
           },
           globalFlags: {
             '--profile-dir': 'Custom profile directory (default: data/uab-profiles)',

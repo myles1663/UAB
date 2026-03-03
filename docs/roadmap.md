@@ -44,6 +44,19 @@ Future development plans for Universal App Bridge.
 - ✅ Git-friendly JSON profile persistence (`registry.json`)
 - ✅ Comprehensive documentation reflecting Smart Function Discovery
 
+### Phase 4 — Desktop + Server Dual-Mode (v0.8.0)
+- ✅ Environment auto-detection (desktop / server / container)
+- ✅ UABConnector auto-tuning (persistence, rate limits, cache TTL per environment)
+- ✅ HTTP REST server (`UABServer`) for remote agent access
+- ✅ Full API exposed as JSON endpoints (scan, connect, query, act, etc.)
+- ✅ Optional API key authentication (`X-API-Key` header)
+- ✅ CORS support for browser-based agents
+- ✅ Session 0→1 bridge integration (transparent for server mode)
+- ✅ CLI `serve` command for starting the HTTP server
+- ✅ CLI `env` command for environment inspection
+- ✅ ONE codebase — desktop and server, no separate builds
+- ✅ Documentation updated with server-side usage and HTTP API reference
+
 ---
 
 ## Near-Term
