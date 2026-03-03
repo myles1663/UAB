@@ -1,37 +1,27 @@
 # Universal App Bridge (UAB)
 
+[![Tests](https://img.shields.io/badge/tests-155%20passing-brightgreen)]() [![License](https://img.shields.io/badge/license-BSL%201.1-blue)]() [![Node](https://img.shields.io/badge/node-%3E%3D18-green)]() [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)]()
+
 **Framework-level desktop app control for AI agents.**
 
-Hook into UI frameworks to get structured, reliable access to any desktop application's interface — no cooperation from app developers required.
+Hook into UI frameworks to get structured, reliable access to any desktop application's interface — no cooperation from app developers required. UAB intercepts at the UI toolkit level using each framework's own introspection and debug capabilities for agent control.
 
 ## The Problem
 
-AI agents need to control local applications, but most apps expose no programmatic interface. Accessibility APIs are unreliable, vision+click is slow and brittle. UAB hooks at the **UI toolkit level** — intercepting the framework's own introspection and debug capabilities for agent control.
+AI agents need to control local applications, but most apps expose no programmatic interface. Accessibility APIs are unreliable, vision+click is slow and brittle. The missing layer is **framework-level hooking**: intercepting at the UI toolkit level to get structured, reliable access to any app's interface.
 
-## Supported Frameworks
+### Core Insight
 
-| Framework | Plugin | Apps Covered |
-|-----------|--------|-------------|
-| **Chrome/Edge/Brave** | Extension Bridge (WebSocket) | Any Chromium browser — tabs, cookies, DOM, storage, JS exec |
-| **Chrome/Edge/Brave** | CDP Fallback | Same browsers, requires `--remote-debugging-port` |
-| **Electron** | Chrome DevTools Protocol | VS Code, Slack, Discord, Notion, Obsidian, Spotify, Teams |
-| **Qt 5/6** | UIA Bridge | VLC, Telegram Desktop, OBS Studio, VirtualBox, Wireshark |
-| **GTK 3/4** | UIA Bridge | GIMP, Inkscape, GNOME apps |
-| **WPF/.NET** | Windows UI Automation | Windows enterprise apps, Visual Studio |
-| **Flutter** | UIA Bridge | Google apps, Ubuntu desktop apps |
-| **Java Swing/FX** | JAB→UIA Bridge | JetBrains IDEs, Android Studio |
-| **MS Office** | COM Automation | Word, Excel, PowerPoint, Outlook |
-| **Win32** | Windows UI Automation | Universal fallback for any Windows app |
+The vast majority of desktop applications are built on a small number of UI frameworks. Hook into 6-7 frameworks and you cover 90%+ of the software people actually use. Each framework already has introspection or debug capabilities built in for developer tooling — UAB repurposes those capabilities for agent control.
 
 ## Quick Start
 
 ### As a Library
 
 ```typescript
-import { uab } from 'universal-app-bridge';
+import { UABConnector } from 'universal-app-bridge';
 
-// Start the service
-await uab.start();
+const uab = new UABConnector();
 
 // Discover running apps
 const apps = await uab.detect();
@@ -49,9 +39,6 @@ await uab.act(apps[0].pid, buttons[0].id, 'click');
 
 // Get app state
 const state = await uab.state(apps[0].pid);
-
-// Cleanup
-await uab.stop();
 ```
 
 ### As a CLI (for AI agents)
@@ -84,6 +71,54 @@ uab screenshot 1234 --output screen.png
 # Get app state
 uab state 1234
 ```
+
+## Architecture
+
+```
+Agent Runtime (Claude / GPT / Any Agent)
+         │
+         ▼
+┌─────────────────────────────────────┐
+│      Universal App Bridge (UAB)     │
+│                                     │
+│  Detector ──▶ Router ──▶ Plugins    │
+│                  │                  │
+│    ┌─────────────┼─────────────┐    │
+│    │  Electron  Office  Qt     │    │
+│    │  Browser   GTK    Java    │    │
+│    │  Flutter   Win-UIA (any)  │    │
+│    └───────────────────────────┘    │
+│                                     │
+│  Cache │ Permissions │ Health │ Retry│
+└─────────────────────────────────────┘
+         │
+         ▼
+    Desktop Applications
+```
+
+**Cascade pattern:** UAB tries framework-native access first (CDP for Electron, COM for Office), falls back through UI Automation, then accessibility, then vision — automatically, per-connection.
+
+```
+Priority 1: Chrome Extension Bridge (browsers — no relaunch)
+Priority 2: CDP Browser Plugin (browsers — with debug flag)
+Priority 3: Direct API / Framework Hook (Electron CDP, etc.)
+Priority 4: Windows UI Automation (universal fallback)
+```
+
+## Supported Frameworks
+
+| Framework | Plugin | Apps Covered |
+|-----------|--------|-------------|
+| **Chrome/Edge/Brave** | Extension Bridge (WebSocket) | Any Chromium browser — tabs, cookies, DOM, storage, JS exec |
+| **Chrome/Edge/Brave** | CDP Fallback | Same browsers, requires `--remote-debugging-port` |
+| **Electron** | Chrome DevTools Protocol | VS Code, Slack, Discord, Notion, Obsidian, Spotify, Teams |
+| **MS Office** | COM Automation | Word, Excel, PowerPoint, Outlook |
+| **Qt 5/6** | UIA Bridge | VLC, Telegram Desktop, OBS Studio, VirtualBox, Wireshark |
+| **GTK 3/4** | UIA Bridge | GIMP, Inkscape, GNOME apps |
+| **WPF/.NET** | Windows UI Automation | Windows enterprise apps, Visual Studio |
+| **Flutter** | UIA Bridge | Google apps, Ubuntu desktop apps |
+| **Java Swing/FX** | JAB→UIA Bridge | JetBrains IDEs, Android Studio |
+| **Win32** | Windows UI Automation | Universal fallback for any Windows app |
 
 ## Unified API
 
@@ -160,17 +195,13 @@ UAB includes a Chrome Extension that connects to your running browser via WebSoc
 
 ### Installation
 
-1. Start UAB (`uab.start()` or `uab detect`)
+1. Start UAB (`uab detect` or programmatically)
 2. Open Chrome → `chrome://extensions/`
 3. Enable **Developer mode** (toggle in top-right)
 4. Click **Load unpacked** → select `data/chrome-extension/`
 5. The extension auto-connects via WebSocket — done!
 
-The extension persists across browser restarts and auto-reconnects when UAB restarts.
-
 ### Browser Actions
-
-The extension bridge supports these additional actions beyond standard UAB:
 
 | Action | Description | Params |
 |--------|-------------|--------|
@@ -187,15 +218,6 @@ The extension bridge supports these additional actions beyond standard UAB:
 | `getSessionStorage` / `setSessionStorage` | sessionStorage ops | `{ storageKey, storageValue? }` |
 | `executeScript` | Run JavaScript in page | `{ script }` |
 | `screenshot` | Capture visible tab | `{ outputPath? }` |
-
-### Fallback Strategy
-
-If the extension is not installed, UAB automatically falls back to the CDP-based `BrowserPlugin` which requires the browser to be relaunched with `--remote-debugging-port`.
-
-```
-Priority 1: Chrome Extension Bridge (no relaunch needed)
-Priority 2: CDP Browser Plugin (requires debug flag)
-```
 
 ## Advanced Features
 
@@ -217,17 +239,6 @@ const chain = {
 };
 
 const result = await uab.executeChain(chain);
-```
-
-### Control Router (Fallback Strategy)
-
-UAB automatically selects the best control method with fallback:
-
-```
-Priority 1: Chrome Extension Bridge (browsers — no relaunch)
-Priority 2: CDP Browser Plugin (browsers — with debug flag)
-Priority 3: Direct API / Framework Hook (Electron CDP, etc.)
-Priority 4: Windows UI Automation (universal fallback)
 ```
 
 ### Smart Caching
@@ -253,6 +264,28 @@ Connection lifecycle management:
 - Stale connection cleanup after 5 minutes of failure
 - Event callbacks for connection state changes
 
+## Documentation
+
+| Document | What's Inside |
+|----------|--------------|
+| [**ARCHITECTURE.md**](ARCHITECTURE.md) | OS automation layer, cascade routing, data flow diagrams |
+| [**GETTING_STARTED.md**](GETTING_STARTED.md) | Install → configure → first interaction walkthrough |
+| [**API_REFERENCE.md**](API_REFERENCE.md) | Every method, parameter, and return type |
+| [**SUPPORTED_APPLICATIONS.md**](SUPPORTED_APPLICATIONS.md) | Tested apps with specific operations and benchmarks |
+| [**SECURITY.md**](SECURITY.md) | Trust boundaries, credential handling, governance |
+| [**CONTRIBUTING.md**](CONTRIBUTING.md) | How to contribute, code style, PR guidelines |
+| [**CHANGELOG.md**](CHANGELOG.md) | Version history |
+
+## Key Numbers
+
+| Metric | Value |
+|--------|-------|
+| Framework plugins | **9** (Electron, Browser, Office, Qt, GTK, Java, Flutter, Chrome Extension, Win-UIA) |
+| Element types | **42** normalized types |
+| Action types | **61** (UI + keyboard + window + Office + browser) |
+| CLI commands | **20+** (all JSON output) |
+| Source files | **30** TypeScript files (~11,700 LOC) |
+
 ## Element Types
 
 UAB normalizes all framework-specific element types into a unified set:
@@ -273,47 +306,18 @@ UAB normalizes all framework-specific element types into a unified set:
 - **Windows** (primary platform — UIA, COM, PowerShell)
 - Linux/macOS support via framework-specific plugins
 
-## Architecture
+## Why UAB Matters
 
-```
-Agent Runtime (Claude / GPT / Any Agent)
-         |
-         v
-┌─────────────────────────────────┐
-│    Universal App Bridge (UAB)   │
-│                                 │
-│  ┌───────────┐  ┌────────────┐  │
-│  │ Framework  │  │  Control   │  │
-│  │ Detector   │──│  Router    │  │
-│  └───────────┘  └────────────┘  │
-│         |              |        │
-│  ┌──────┴──────────────┴──────┐ │
-│  │     Framework Plugins      │ │
-│  │ Chrome Ext  Browser (CDP)  │ │
-│  │ Electron  Qt  GTK  WPF     │ │
-│  │ Flutter  Java  Office      │ │
-│  └────────────────────────────┘ │
-│         |                       │
-│  ┌──────┴─────────────────────┐ │
-│  │       Unified API          │ │
-│  │ enumerate() query() act()  │ │
-│  │ state() subscribe()       │ │
-│  └────────────────────────────┘ │
-│                                 │
-│  ┌────────────────────────────┐ │
-│  │   Production Hardening     │ │
-│  │ Cache  Permissions  Health │ │
-│  │ Retry  Chains  Audit Log   │ │
-│  └────────────────────────────┘ │
-└─────────────────────────────────┘
-```
+The person who solves reliable, universal app control for agents unlocks the entire "AI operating system" vision without needing anyone's permission. No waiting for app developers to build APIs. No begging SaaS companies for MCP servers. No fragile pixel-scraping. You hook into the framework, you own the interface.
+
+Electron alone covers a massive surface area. Add Qt and you've got Linux mostly covered. Add macOS native and WPF and you've got cross-platform agent control that actually works.
 
 ## License
 
 Universal App Bridge is licensed under the **Business Source License 1.1**.
 
 **Permitted:** Personal use, academic research, evaluation, testing,
-open source projects, and use within the Lancelot ecosystem.
+open source projects.
 
 **Requires commercial license:** Commercial agent runtimes, SaaS
 platforms, enterprise internal use (25+ employees), competing

@@ -13,4 +13,3 @@ export declare function createLogger(module: string): {
     error: (msg: string, data?: Record<string, unknown>) => void;
 };
 export declare function closeLogger(): void;
-//# sourceMappingURL=logger.d.ts.map

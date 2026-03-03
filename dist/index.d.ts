@@ -18,6 +18,10 @@
  *
  * @packageDocumentation
  */
+export { UABConnector } from './connector.js';
+export type { ConnectorOptions, ConnectionInfo } from './connector.js';
+export { AppRegistry } from './registry.js';
+export type { AppProfile, RegistrySnapshot, RegistryOptions } from './registry.js';
 export { UABService, uab } from './service.js';
 export type { UIElement, Bounds, ElementType, ActionType, ElementSelector, ActionParams, ActionResult, AppState, UABEventType, UABEvent, UABEventCallback, Subscription, FrameworkType, DetectedApp, FrameworkPlugin, PluginConnection, ControlMethod, ControlRoute, } from './types.js';
 export { FrameworkDetector } from './detector.js';
@@ -41,4 +45,3 @@ export { JavaPlugin } from './plugins/java/index.js';
 export { FlutterPlugin } from './plugins/flutter/index.js';
 export { OfficePlugin } from './plugins/office/index.js';
 export { createLogger, closeLogger } from './logger.js';
-//# sourceMappingURL=index.d.ts.map

@@ -94,4 +94,3 @@ export declare class ConnectionManager {
     shutdown(): Promise<void>;
     private emit;
 }
-//# sourceMappingURL=connection-manager.d.ts.map

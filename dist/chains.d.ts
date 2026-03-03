@@ -124,4 +124,3 @@ export declare function buildFormChain(pid: number, name: string, fields: Array<
 }>, submitSelector?: ElementSelector): ChainDefinition;
 /** Create a "navigate menu" chain (click through menu items) */
 export declare function buildMenuChain(pid: number, name: string, menuPath: string[]): ChainDefinition;
-//# sourceMappingURL=chains.d.ts.map

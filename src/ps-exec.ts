@@ -140,31 +140,18 @@ ${script}
 // ─── Public API ─────────────────────────────────────────────
 
 /**
- * Sanitize PowerShell output for JSON parsing.
- * - Strips non-JSON prefix lines (e.g., stray "True"/"False" from Win32 calls)
- * - Handles Infinity/-Infinity/NaN values (not valid JSON) by replacing with 0
- */
-function sanitizePSJson(raw: string): string {
-  let text = raw.trim();
-  // Strip any lines before the first JSON object/array
-  const jsonStart = text.search(/[\[{]/);
-  if (jsonStart > 0) {
-    text = text.substring(jsonStart);
-  }
-  // PowerShell's ConvertTo-Json outputs Infinity/-Infinity for infinite doubles
-  // (e.g., minimized window bounds). Replace with 0 for valid JSON.
-  return text
-    .replace(/:\s*-Infinity/g, ': 0')
-    .replace(/:\s*Infinity/g, ': 0')
-    .replace(/:\s*NaN/g, ': 0');
-}
-
-/**
  * Execute a PowerShell script and parse the JSON output.
+ * Handles PowerShell Infinity/-Infinity values (not valid JSON) by replacing with 0.
  */
 export function runPSJson(script: string, timeoutMs: number = 15000): unknown {
   const output = execPSFile(script, timeoutMs);
-  return JSON.parse(sanitizePSJson(output));
+  // PowerShell's ConvertTo-Json outputs Infinity/-Infinity for infinite doubles
+  // (e.g., minimized window bounds). Replace with 0 for valid JSON.
+  const sanitized = output.trim()
+    .replace(/:\s*-Infinity/g, ': 0')
+    .replace(/:\s*Infinity/g, ': 0')
+    .replace(/:\s*NaN/g, ': 0');
+  return JSON.parse(sanitized);
 }
 
 /**
@@ -183,7 +170,11 @@ export function runPSJsonInteractive(script: string, timeoutMs: number = 15000):
   const output = isSession0()
     ? execPSInteractive(script, timeoutMs)
     : execPSFile(script, timeoutMs);
-  return JSON.parse(sanitizePSJson(output));
+  const sanitized = output.trim()
+    .replace(/:\s*-Infinity/g, ': 0')
+    .replace(/:\s*Infinity/g, ': 0')
+    .replace(/:\s*NaN/g, ': 0');
+  return JSON.parse(sanitized);
 }
 
 /**

@@ -577,51 +577,6 @@ export function registerUABCommands(bot: Bot<Context>): void {
     await ctx.reply(text, { parse_mode: 'HTML' });
   });
 
-  // ─── Phase 5: /ext — Chrome Extension bridge status ─────────────
-
-  bot.command('ext', async (ctx) => {
-    const sub = ctx.match?.trim().toLowerCase();
-
-    if (sub === 'install') {
-      const { getInstallInstructions, extensionExists, generateIcons } =
-        await import('./plugins/chrome-ext/installer.js');
-
-      if (!extensionExists()) {
-        await ctx.reply('❌ Extension files not found in data/chrome-extension/');
-        return;
-      }
-
-      generateIcons();
-      await ctx.reply(getInstallInstructions());
-      return;
-    }
-
-    // Default: show status
-    const server = uab.extensionServer;
-    const connected = server.connected;
-    const info = server.info;
-
-    let text = '🧩 <b>Chrome Extension Bridge</b>\n\n';
-    text += `📡 WS Server: <code>ws://localhost:8787</code>\n`;
-    text += `🔌 Extension: ${connected ? '✅ Connected' : '❌ Not connected'}\n`;
-
-    if (connected && info) {
-      text += `🌐 Browser: ${escapeHtml(info.browser)}\n`;
-      text += `📦 Version: ${info.version}\n`;
-      text += `⏱️ Connected: ${formatDuration(Date.now() - info.connectedAt)} ago\n`;
-    }
-
-    text += '\n<b>Commands:</b>\n';
-    text += '<code>/ext</code> — Show status\n';
-    text += '<code>/ext install</code> — Show install instructions\n';
-
-    if (!connected) {
-      text += '\n💡 <i>To connect: load the extension from</i> <code>data/chrome-extension/</code> <i>in Chrome</i>';
-    }
-
-    await ctx.reply(text, { parse_mode: 'HTML' });
-  });
-
   // ─── Phase 4: /chain — Execute an action chain ────────────────
 
   bot.command('chain', async (ctx) => {

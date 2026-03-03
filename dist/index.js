@@ -18,7 +18,11 @@
  *
  * @packageDocumentation
  */
-// ─── Core Service ────────────────────────────────────────────────
+// ─── Framework-Independent Connector ─────────────────────────────
+export { UABConnector } from './connector.js';
+// ─── App Registry ────────────────────────────────────────────────
+export { AppRegistry } from './registry.js';
+// ─── Core Service (ClaudeClaw integration) ───────────────────────
 export { UABService, uab } from './service.js';
 // ─── Detection & Routing ────────────────────────────────────────
 export { FrameworkDetector } from './detector.js';

@@ -51,14 +51,7 @@ export type ActionType =
   | 'readDocument' | 'readCell' | 'writeCell'
   | 'readRange' | 'writeRange' | 'getSheets' | 'readFormula'
   | 'readSlides' | 'readSlideText'
-  | 'readEmails' | 'composeEmail' | 'sendEmail'
-  // Browser session/cookie actions
-  | 'getCookies' | 'setCookie' | 'deleteCookie' | 'clearCookies'
-  | 'getLocalStorage' | 'setLocalStorage' | 'deleteLocalStorage' | 'clearLocalStorage'
-  | 'getSessionStorage' | 'setSessionStorage' | 'deleteSessionStorage' | 'clearSessionStorage'
-  | 'navigate' | 'goBack' | 'goForward' | 'reload'
-  | 'getTabs' | 'switchTab' | 'closeTab' | 'newTab'
-  | 'executeScript';
+  | 'readEmails' | 'composeEmail' | 'sendEmail';
 
 // ─── Query / Selector ───────────────────────────────────────────
 
@@ -111,20 +104,6 @@ export interface ActionParams {
   count?: number;         // Number of items to return
   // PowerPoint COM params
   slideIndex?: number;    // Slide number (1-based)
-  // Browser session/cookie params
-  url?: string;           // URL for navigation / cookie scope
-  domain?: string;        // Cookie domain
-  path?: string;          // Cookie path
-  cookieName?: string;    // Cookie name for get/set/delete
-  cookieValue?: string;   // Cookie value for set
-  secure?: boolean;       // Cookie secure flag
-  httpOnly?: boolean;     // Cookie httpOnly flag
-  sameSite?: 'Strict' | 'Lax' | 'None';  // Cookie SameSite
-  expires?: number;       // Cookie expiry (unix timestamp)
-  storageKey?: string;    // localStorage/sessionStorage key
-  storageValue?: string;  // localStorage/sessionStorage value
-  tabId?: string;         // Tab/target ID
-  script?: string;        // JavaScript to execute
 }
 
 export interface ActionResult {
@@ -172,7 +151,7 @@ export interface Subscription {
 // ─── Framework Detection ────────────────────────────────────────
 
 export type FrameworkType =
-  | 'electron' | 'browser' | 'qt5' | 'qt6' | 'gtk3' | 'gtk4'
+  | 'electron' | 'qt5' | 'qt6' | 'gtk3' | 'gtk4'
   | 'macos-native' | 'wpf' | 'winui' | 'dotnet'
   | 'flutter' | 'java-swing' | 'javafx' | 'office' | 'unknown';
 

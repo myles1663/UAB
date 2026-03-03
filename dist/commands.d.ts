@@ -26,4 +26,3 @@
  */
 import type { Bot, Context } from 'grammy';
 export declare function registerUABCommands(bot: Bot<Context>): void;
-//# sourceMappingURL=commands.d.ts.map

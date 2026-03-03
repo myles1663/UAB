@@ -31,4 +31,3 @@ export declare function withRetry<T>(operation: () => Promise<T>, options?: Retr
 export declare function retryable<TArgs extends unknown[], TReturn>(fn: (...args: TArgs) => Promise<TReturn>, options?: RetryOptions): (...args: TArgs) => Promise<TReturn>;
 /** Execute an operation with a timeout (no retry) */
 export declare function withTimeout<T>(operation: () => Promise<T>, timeoutMs: number, label?: string): Promise<T>;
-//# sourceMappingURL=retry.d.ts.map

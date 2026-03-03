@@ -137,4 +137,3 @@ export declare class UABService {
 }
 /** Singleton UAB service instance */
 export declare const uab: UABService;
-//# sourceMappingURL=service.d.ts.map

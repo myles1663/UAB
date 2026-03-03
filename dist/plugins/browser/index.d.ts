@@ -29,4 +29,3 @@ export declare function isBrowserProcess(processName: string): boolean;
  * Get a display name for a browser process.
  */
 export declare function getBrowserDisplayName(processName: string): string;
-//# sourceMappingURL=index.d.ts.map

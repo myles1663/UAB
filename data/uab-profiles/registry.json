@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "lastScan": 1772559021037,
+  "appCount": 25,
+  "apps": {
+    "explorer.exe": {
+      "executable": "explorer.exe",
+      "name": "explorer",
+      "pid": 5196,
+      "framework": "dotnet",
+      "confidence": 0.75,
+      "path": "C:\\WINDOWS\\explorer.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "msedgewebview2.exe": {
+      "executable": "msedgewebview2.exe",
+      "name": "msedgewebview2",
+      "pid": 23496,
+      "framework": "electron",
+      "confidence": 0.93,
+      "connectionInfo": {
+        "protocol": "cdp"
+      },
+      "path": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\145.0.3800.82\\msedgewebview2.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "ms-teams.exe": {
+      "executable": "ms-teams.exe",
+      "name": "ms-teams",
+      "pid": 18232,
+      "framework": "unknown",
+      "confidence": 0.5,
+      "path": "C:\\Program Files\\WindowsApps\\MSTeams_26032.208.4399.5_x64__8wekyb3d8bbwe\\ms-teams.exe",
+      "windowTitle": "Chat | Chip Minnich | Microsoft Teams",
+      "lastSeen": 1772559021037
+    },
+    "chatgpt.exe": {
+      "executable": "chatgpt.exe",
+      "name": "ChatGPT",
+      "pid": 14840,
+      "framework": "electron",
+      "confidence": 1,
+      "connectionInfo": {
+        "protocol": "cdp"
+      },
+      "path": "C:\\Program Files\\WindowsApps\\OpenAI.ChatGPT-Desktop_1.2026.43.0_x64__2p2nqsd0c76g0\\app\\ChatGPT.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "notepad++.exe": {
+      "executable": "notepad++.exe",
+      "name": "notepad++",
+      "pid": 19384,
+      "framework": "unknown",
+      "confidence": 0.5,
+      "path": "C:\\Program Files\\Notepad++\\notepad++.exe",
+      "windowTitle": "*new 3 - Notepad++",
+      "lastSeen": 1772559021037
+    },
+    "winword.exe": {
+      "executable": "winword.exe",
+      "name": "WINWORD.EXE",
+      "pid": 22704,
+      "framework": "office",
+      "confidence": 0.95,
+      "path": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
+      "windowTitle": "Lancelot_AgentMesh_Patent - Word",
+      "lastSeen": 1772559021037
+    },
+    "olk.exe": {
+      "executable": "olk.exe",
+      "name": "olk",
+      "pid": 22780,
+      "framework": "unknown",
+      "confidence": 0.5,
+      "path": "C:\\Program Files\\WindowsApps\\Microsoft.OutlookForWindows_1.2026.210.300_x64__8wekyb3d8bbwe\\olk.exe",
+      "windowTitle": "Mail - Myles Hamilton - Outlook",
+      "lastSeen": 1772559021037
+    },
+    "dellmobileconnectclient.exe": {
+      "executable": "dellmobileconnectclient.exe",
+      "name": "DellMobileConnectClient",
+      "pid": 33332,
+      "framework": "wpf",
+      "confidence": 0.9,
+      "path": "C:\\Program Files\\WindowsApps\\ScreenovateTechnologies.DellMobileConnect_3.3.9809.0_x64__0vhbc3ng4wbp0\\app\\DellMobileConnectClient.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "telegram.exe": {
+      "executable": "telegram.exe",
+      "name": "Telegram",
+      "pid": 15568,
+      "framework": "unknown",
+      "confidence": 0.5,
+      "path": "C:\\Users\\SSAdministrator\\AppData\\Roaming\\Telegram Desktop\\Telegram.exe",
+      "windowTitle": "?CLaude - (23804)",
+      "lastSeen": 1772559021037
+    },
+    "docker desktop": {
+      "executable": "docker desktop",
+      "name": "Docker Desktop",
+      "pid": 36304,
+      "framework": "unknown",
+      "confidence": 0.5,
+      "path": "",
+      "windowTitle": "Containers - Docker Desktop",
+      "lastSeen": 1772559021037
+    },
+    "docker desktop.exe": {
+      "executable": "docker desktop.exe",
+      "name": "Docker Desktop",
+      "pid": 37404,
+      "framework": "electron",
+      "confidence": 1,
+      "connectionInfo": {
+        "protocol": "cdp"
+      },
+      "path": "C:\\Program Files\\Docker\\Docker\\frontend\\Docker Desktop.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "onedrive.exe": {
+      "executable": "onedrive.exe",
+      "name": "OneDrive",
+      "pid": 44384,
+      "framework": "qt5",
+      "confidence": 1,
+      "path": "C:\\Users\\SSAdministrator\\AppData\\Local\\Microsoft\\OneDrive\\OneDrive.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "phoneexperiencehost.exe": {
+      "executable": "phoneexperiencehost.exe",
+      "name": "PhoneExperienceHost",
+      "pid": 74416,
+      "framework": "dotnet",
+      "confidence": 0.7999999999999999,
+      "path": "C:\\Program Files\\WindowsApps\\Microsoft.YourPhone_1.26011.42.0_x64__8wekyb3d8bbwe\\PhoneExperienceHost.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "backgroundtaskhost.exe": {
+      "executable": "backgroundtaskhost.exe",
+      "name": "backgroundTaskHost",
+      "pid": 30328,
+      "framework": "dotnet",
+      "confidence": 0.7999999999999999,
+      "path": "C:\\WINDOWS\\system32\\backgroundTaskHost.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "notepad.exe": {
+      "executable": "notepad.exe",
+      "name": "Notepad",
+      "pid": 53776,
+      "framework": "dotnet",
+      "confidence": 0.75,
+      "path": "C:\\Program Files\\WindowsApps\\microsoft.windowsnotepad_11.2510.14.0_x64__8wekyb3d8bbwe\\Notepad\\Notepad.exe",
+      "windowTitle": "*k what I need you to do next. we ne - Notepad",
+      "lastSeen": 1772559021037
+    },
+    "notepad": {
+      "executable": "notepad",
+      "name": "Notepad",
+      "pid": 65028,
+      "framework": "unknown",
+      "confidence": 0.5,
+      "path": "",
+      "windowTitle": "*cd cUsersSSAdministratorDesktopclau - Notepad",
+      "lastSeen": 1772559021037
+    },
+    "filecoauth.exe": {
+      "executable": "filecoauth.exe",
+      "name": "FileCoAuth",
+      "pid": 74152,
+      "framework": "qt5",
+      "confidence": 0.9299999999999999,
+      "path": "C:\\Users\\SSAdministrator\\AppData\\Local\\Microsoft\\OneDrive\\26.022.0203.0006\\FileCoAuth.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "chrome.exe": {
+      "executable": "chrome.exe",
+      "name": "chrome",
+      "pid": 36328,
+      "framework": "electron",
+      "confidence": 1,
+      "connectionInfo": {
+        "debugPort": 9222,
+        "protocol": "cdp"
+      },
+      "path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "msedge.exe": {
+      "executable": "msedge.exe",
+      "name": "msedge",
+      "pid": 59488,
+      "framework": "electron",
+      "confidence": 0.96,
+      "connectionInfo": {
+        "debugPort": 9223,
+        "protocol": "cdp"
+      },
+      "path": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "excel.exe": {
+      "executable": "excel.exe",
+      "name": "EXCEL.EXE",
+      "pid": 58968,
+      "framework": "office",
+      "confidence": 0.95,
+      "path": "",
+      "windowTitle": "Book2 - Excel",
+      "lastSeen": 1772559021037
+    },
+    "powerpnt.exe": {
+      "executable": "powerpnt.exe",
+      "name": "POWERPNT.EXE",
+      "pid": 30796,
+      "framework": "office",
+      "confidence": 0.95,
+      "path": "",
+      "windowTitle": "UAB-Presentation  -  Read-Only - PowerPoint",
+      "lastSeen": 1772559021037
+    },
+    "windowsterminal.exe": {
+      "executable": "windowsterminal.exe",
+      "name": "WindowsTerminal",
+      "pid": 31172,
+      "framework": "unknown",
+      "confidence": 0.5,
+      "path": "C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_1.23.20211.0_x64__8wekyb3d8bbwe\\WindowsTerminal.exe",
+      "windowTitle": "Command Prompt",
+      "lastSeen": 1772559021037
+    },
+    "onedrive.sync.service.exe": {
+      "executable": "onedrive.sync.service.exe",
+      "name": "OneDrive.Sync.Service",
+      "pid": 77532,
+      "framework": "qt5",
+      "confidence": 0.9299999999999999,
+      "path": "C:\\Users\\SSAdministrator\\AppData\\Local\\Microsoft\\OneDrive\\26.022.0203.0006\\OneDrive.Sync.Service.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    },
+    "cmd": {
+      "executable": "cmd",
+      "name": "cmd",
+      "pid": 29300,
+      "framework": "unknown",
+      "confidence": 0.5,
+      "path": "",
+      "windowTitle": "Administrator: Command Prompt",
+      "lastSeen": 1772559021037
+    },
+    "claude.exe": {
+      "executable": "claude.exe",
+      "name": "claude",
+      "pid": 51264,
+      "framework": "electron",
+      "confidence": 1,
+      "connectionInfo": {
+        "protocol": "cdp"
+      },
+      "path": "C:\\Users\\SSAdministrator\\AppData\\Local\\AnthropicClaude\\app-1.1.4498\\claude.exe",
+      "windowTitle": "",
+      "lastSeen": 1772559021037
+    }
+  }
+}

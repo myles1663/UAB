@@ -2,7 +2,7 @@
 /**
  * UAB Package Build Script
  *
- * 1. Builds the UAB project (tsc)
+ * 1. Builds the parent ClaudeClaw project (tsc)
  * 2. Copies compiled UAB output into packages/uab/dist/
  * 3. Result is a standalone npm-publishable package
  */
@@ -79,6 +79,8 @@ const requiredFiles = [
   'dist/index.js',
   'dist/index.d.ts',
   'dist/cli.js',
+  'dist/connector.js',
+  'dist/registry.js',
   'dist/service.js',
   'dist/types.js',
   'dist/detector.js',
@@ -87,11 +89,10 @@ const requiredFiles = [
   'dist/permissions.js',
   'dist/logger.js',
   'dist/plugins/base.js',
+  'dist/plugins/electron/index.js',
+  'dist/plugins/browser/index.js',
   'dist/plugins/chrome-ext/index.js',
   'dist/plugins/chrome-ext/ws-server.js',
-  'dist/plugins/chrome-ext/installer.js',
-  'dist/plugins/browser/index.js',
-  'dist/plugins/electron/index.js',
   'dist/plugins/win-uia/index.js',
 ];
 

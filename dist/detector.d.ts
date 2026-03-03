@@ -22,4 +22,3 @@ export declare class FrameworkDetector {
     findByName(name: string): Promise<DetectedApp[]>;
     clearCache(): void;
 }
-//# sourceMappingURL=detector.d.ts.map

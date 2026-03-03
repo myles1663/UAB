@@ -20,4 +20,3 @@ export declare class ChromeExtPlugin implements FrameworkPlugin {
     canHandle(app: DetectedApp): boolean;
     connect(app: DetectedApp): Promise<PluginConnection>;
 }
-//# sourceMappingURL=index.d.ts.map

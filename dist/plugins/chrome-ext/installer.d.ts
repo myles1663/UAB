@@ -51,4 +51,3 @@ export declare function registerViaRegistry(): {
  * Tries to detect the extension's WebSocket connection.
  */
 export declare function isExtensionActive(wsConnected: boolean): boolean;
-//# sourceMappingURL=installer.d.ts.map

@@ -24,4 +24,3 @@ export declare class QtPlugin implements FrameworkPlugin {
     connect(app: DetectedApp): Promise<PluginConnection>;
 }
 export default QtPlugin;
-//# sourceMappingURL=index.d.ts.map

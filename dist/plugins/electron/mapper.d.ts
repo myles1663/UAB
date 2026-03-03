@@ -21,4 +21,3 @@ export declare class DOMMapper {
     private resolveActions;
     populateBounds(element: UIElement): Promise<void>;
 }
-//# sourceMappingURL=mapper.d.ts.map

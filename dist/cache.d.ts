@@ -64,4 +64,3 @@ export declare class ElementCache {
     getHitRate(): number;
     private queryKey;
 }
-//# sourceMappingURL=cache.d.ts.map

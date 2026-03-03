@@ -2,6 +2,28 @@
 
 All notable changes to Universal App Bridge will be documented in this file.
 
+## [0.7.0] - 2026-03-03
+
+### Added
+
+- **UABConnector** — Framework-independent connector class that any agent/application can instantiate directly. No singleton required.
+- **AppRegistry** — In-memory app registry with JSON file persistence (`data/uab-profiles/registry.json`). Remembers detected apps, frameworks, and connection info across sessions.
+- **Comprehensive documentation suite:**
+  - `ARCHITECTURE.md` — Deep dive into cascade routing, plugin system, data flow diagrams, Session 0→1 bridging
+  - `API_REFERENCE.md` — Complete reference for every public class, method, parameter, and return type
+  - `GETTING_STARTED.md` — Step-by-step install → configure → first interaction walkthrough
+  - `SUPPORTED_APPLICATIONS.md` — Tested apps with verified operations and performance benchmarks
+  - `SECURITY.md` — Threat model, trust boundaries, credential handling, governance integration
+  - `CONTRIBUTING.md` — Development workflow, code style, plugin authoring guide, PR guidelines
+- Connector export path: `import { UABConnector } from 'universal-app-bridge/connector'`
+
+### Changed
+
+- Updated README with full technical documentation, architecture diagrams, and "Why UAB Matters" vision
+- Package version bumped to 0.7.0
+- License field updated to `BSL-1.1`
+- Source now includes 30 TypeScript files (~11,700 LOC)
+
 ## [0.6.0] - 2026-03-02
 
 ### Added
