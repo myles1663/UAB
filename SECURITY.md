@@ -1,6 +1,6 @@
 # Security
 
-UAB's security model is designed for enterprise environments where AI agents need controlled, auditable access to desktop applications.
+UAB's security model is designed for enterprise environments where AI agents need controlled, auditable access to desktop applications. Security is built into every phase of the Smart Function Discovery pipeline — from scan to action.
 
 ---
 

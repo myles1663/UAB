@@ -121,30 +121,42 @@ You should see JSON output listing detected applications.
 src/uab/
 ├── types.ts              # Core type definitions (modify carefully)
 ├── index.ts              # Public API exports
-├── service.ts            # Main UABService class
-├── router.ts             # Control method routing
-├── detector.ts           # Framework detection
-├── cache.ts              # Element caching
-├── permissions.ts        # Safety model
-├── connection-manager.ts # Health monitoring
-├── chains.ts             # Workflow engine
-├── retry.ts              # Retry utilities
-├── cli.ts                # CLI interface
+├── connector.ts          # UABConnector — Primary API (Smart Function Discovery)
+├── registry.ts           # AppRegistry — In-memory knowledge base + JSON persistence
+├── service.ts            # UABService — Singleton wrapper (single-consumer use)
+├── detector.ts           # Framework detection (DLL scanning, batch enumeration)
+├── router.ts             # Control method routing (cascade + fallback)
+├── cache.ts              # Three-tier element caching (tree/query/state TTL)
+├── permissions.ts        # Safety model (risk levels, rate limiting, audit)
+├── connection-manager.ts # Health monitoring (auto-reconnect, stale cleanup)
+├── chains.ts             # Multi-step workflow engine
+├── retry.ts              # Exponential backoff with jitter
+├── cli.ts                # CLI interface (JSON output for AI agents)
 ├── commands.ts           # Telegram command handlers
-├── logger.ts             # Logging
-├── ps-exec.ts            # PowerShell execution
+├── logger.ts             # Structured logging
+├── ps-exec.ts            # PowerShell execution (Session 0→1 bridge)
 └── plugins/
-    ├── base.ts           # Plugin manager
+    ├── base.ts           # Plugin manager (ordered registration)
     ├── electron/         # Electron CDP plugin
     ├── browser/          # Browser CDP plugin
-    ├── office/           # Office COM+UIA plugin
-    ├── win-uia/          # Universal UIA fallback
-    ├── chrome-ext/       # Chrome extension bridge
+    ├── office/           # Office COM+UIA hybrid plugin
+    ├── win-uia/          # Universal UIA fallback (1500+ LOC)
+    ├── chrome-ext/       # Chrome extension bridge (WebSocket)
     ├── qt/               # Qt via UIA
     ├── gtk/              # GTK via UIA
     ├── java/             # Java via JAB→UIA
     └── flutter/          # Flutter via UIA
 ```
+
+### Smart Function Discovery Flow
+
+When modifying UAB, understand the five-phase pipeline:
+
+1. **Scan** (`detector.ts`) — WMI + batch DLL scan + window titles
+2. **Identify** (`detector.ts`) — Framework signature matching → confidence scores
+3. **Register** (`registry.ts`) — AppProfile stored in dual-indexed Maps + JSON file
+4. **Connect** (`connector.ts` → `router.ts` → `plugins/`) — Cascade tries best method first
+5. **Learn** (`connector.ts` → `registry.ts`) — Update preferred method after success
 
 ### Conventions
 

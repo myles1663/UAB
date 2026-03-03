@@ -2,344 +2,461 @@
 
 Complete reference for every public interface in Universal App Bridge.
 
-> Auto-generated from source: `src/uab/`. All types, methods, parameters, and return values documented.
+> The primary API is `UABConnector` — framework-independent, instantiable, zero dependencies. Use it in any agent framework.
 
 ---
 
 ## Table of Contents
 
-- [UABService](#uabservice) — Main service singleton
+- [UABConnector](#uabconnector) — Primary API (framework-independent)
+- [AppRegistry](#appregistry) — In-memory knowledge base with JSON persistence
 - [Types](#types) — Core type definitions
-- [ElementCache](#elementcache) — Smart caching
-- [PermissionManager](#permissionmanager) — Safety & audit
-- [ConnectionManager](#connectionmanager) — Health monitoring
+- [ElementCache](#elementcache) — Smart three-tier caching
+- [PermissionManager](#permissionmanager) — Safety, rate limiting, audit
+- [ConnectionManager](#connectionmanager) — Health monitoring & reconnect
 - [ChainExecutor](#chainexecutor) — Multi-step workflows
 - [Retry Utilities](#retry-utilities) — Error recovery
-- [CLI Commands](#cli-commands) — Command-line interface
-- [FrameworkDetector](#frameworkdetector) — Process scanning
-- [ControlRouter](#controlrouter) — Method cascading
+- [FrameworkDetector](#frameworkdetector) — Process scanning & identification
+- [ControlRouter](#controlrouter) — Method cascading & fallback
 - [PluginManager](#pluginmanager) — Plugin registry
+- [CLI Commands](#cli-commands) — Command-line interface
 
 ---
 
-## UABService
+## UABConnector
 
-**Import:** `import { uab } from 'universal-app-bridge'`
+**Import:** `import { UABConnector } from 'universal-app-bridge'`
 
-The main entry point. Singleton instance that manages the full lifecycle.
+The primary API for controlling desktop apps. Framework-independent, instantiable (not singleton), zero dependencies on any agent runtime.
+
+### Constructor
+
+```typescript
+new UABConnector(options?: ConnectorOptions)
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `profileDir` | `string` | `'data/uab-profiles'` | Directory for JSON profile persistence |
+| `persistent` | `boolean` | `false` | Enable connection health monitoring |
+| `extensionBridge` | `boolean` | `false` | Enable Chrome extension WebSocket bridge |
+| `loadProfiles` | `boolean` | `true` | Load existing profiles on start |
+| `rateLimit` | `number` | `100` | Max actions per minute per PID |
 
 ### Lifecycle
 
 #### `start(): Promise<void>`
-Initialize UAB service. Registers all plugins, starts health monitoring.
+
+Initialize the connector. Loads profiles, registers plugins, optionally starts extension bridge and connection manager.
+
+**Must be called before any other method.**
 
 #### `stop(): Promise<void>`
-Disconnect all connections, stop health monitoring, clean up resources.
+
+Disconnect all connections, stop health monitoring, release all resources.
 
 #### `running: boolean`
-Whether the service is currently active.
+
+Whether the connector is currently active.
 
 ---
 
-### Discovery
+### Smart Discovery
 
-#### `detect(): Promise<DetectedApp[]>`
-Scan for all controllable desktop applications.
+These methods implement the Smart Function Discovery pipeline.
 
-**Returns:** Array of detected apps with PID, name, framework, confidence score.
+#### `scan(electronOnly?: boolean): Promise<AppProfile[]>`
+
+**Phase 1+2+3:** Scan the entire system, identify frameworks, and register everything in the registry.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `electronOnly` | `boolean` | `false` | Only scan for Electron apps (faster) |
+
+**Returns:** Array of `AppProfile` objects — every detected app with framework, confidence, and metadata. All results are automatically registered in the `AppRegistry`.
 
 ```typescript
-const apps = await uab.detect();
-// [{ pid: 1234, name: 'Slack', framework: 'electron', confidence: 0.9, path: '...', windowTitle: '...' }]
+const apps = await uab.scan();
+// → 79 apps found, frameworks identified, profiles persisted to registry.json
 ```
 
-#### `detectElectron(): Promise<DetectedApp[]>`
-Scan for Electron apps only (faster, targeted).
+**Performance:** 2-5 seconds for full system scan (batched PowerShell calls).
 
-#### `detectByPid(pid: number): Promise<DetectedApp | null>`
-Check if a specific PID is a controllable app.
+#### `apps(): AppProfile[]`
+
+List all known apps from the registry. **No scan — instant.** Returns whatever is currently in the registry (from `scan()` or `load()`).
+
+```typescript
+const known = uab.apps();
+// → Instant (O(1) — reads from in-memory Map)
+```
+
+#### `find(query: string): Promise<AppProfile[]>`
+
+**Smart lookup:** Checks registry first (instant), falls back to live detection if not found.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `pid` | `number` | Process ID to check |
+| `query` | `string` | App name to search (case-insensitive, substring match) |
 
-#### `findByName(name: string): Promise<DetectedApp[]>`
-Find apps by name (fuzzy, case-insensitive match).
+```typescript
+const excel = await uab.find('excel');
+// Registry hit: instant (< 1ms)
+// Registry miss: live detect → register → return (~2s)
+```
+
+**The intelligence:** First call to `find("excel")` may need live detection. After that, it's always instant because the registry remembers.
+
+#### `inspectPid(pid: number): Promise<AppProfile | null>`
+
+Check a specific PID. Registry first, live detection fallback.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `name` | `string` | App name to search for |
+| `pid` | `number` | Process ID to inspect |
 
 ---
 
 ### Connection
 
-#### `connect(app: DetectedApp): Promise<{ method: string; pid: number }>`
-Connect to a detected application. UAB selects the best control method automatically.
+#### `connect(pid: number): Promise<ConnectionInfo>`
+#### `connect(name: string): Promise<ConnectionInfo>`
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `app` | `DetectedApp` | App object from `detect()` |
+Connect to an app by PID or name. Auto-detects if not in registry. Selects best control method via plugin cascade.
 
-**Returns:** `{ method: string, pid: number }` — the control method used and PID.
+```typescript
+// By name (searches registry, then live-detects)
+const conn = await uab.connect('notepad');
 
-#### `connectByName(name: string): Promise<{ method: string; pid: number; app: DetectedApp }>`
-Convenience method: detect + find + connect in one call.
+// By PID (checks registry, auto-detects if not found)
+const conn = await uab.connect(1234);
+```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `name` | `string` | App name (fuzzy match) |
+**Returns:**
+
+```typescript
+interface ConnectionInfo {
+  pid: number;        // Process ID
+  name: string;       // App name
+  framework: string;  // Detected framework
+  method: string;     // Control method used ('cdp', 'com+uia', 'accessibility')
+  elementCount: number; // Total UI elements found
+}
+```
+
+**What happens internally:**
+1. Look up app in registry (or live-detect)
+2. Plugin cascade selects best method
+3. `withRetry()` wraps the connection attempt
+4. Connection manager tracks health (if persistent mode)
+5. Registry updated with preferred method (**learning**)
+6. Element tree enumerated for count
 
 #### `disconnect(pid: number): Promise<void>`
+
 Disconnect from a specific app.
 
 #### `disconnectAll(): Promise<void>`
+
 Disconnect from all connected apps.
 
 #### `isConnected(pid: number): boolean`
-Check if currently connected to a PID.
 
-#### `getConnections(): Array<{ pid: number; name: string; framework: string; method: string }>`
-List all active connections.
+Check if currently connected to a PID.
 
 ---
 
-### Core API
+### Core Interaction
 
-#### `enumerate(pid: number): Promise<UIElement[]>`
-Get the full UI element tree for a connected app. Results are cached (5s TTL).
+#### `enumerate(pid: number, maxDepth?: number): Promise<UIElement[]>`
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `pid` | `number` | Process ID of connected app |
+Get the UI element tree for a connected app. **Cached for 5 seconds.**
 
-**Returns:** Array of `UIElement` objects in tree structure.
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pid` | `number` | — | Process ID of connected app |
+| `maxDepth` | `number` | `3` | Maximum tree depth |
+
+```typescript
+const tree = await uab.enumerate(pid);
+// First call: fetches from plugin (~100-500ms)
+// Repeat within 5s: instant cache hit
+```
 
 #### `query(pid: number, selector: ElementSelector): Promise<UIElement[]>`
-Search for specific elements. Results are cached (3s TTL).
+
+Search for specific UI elements. **Cached for 3 seconds**, auto-invalidated after mutating actions.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `pid` | `number` | Process ID of connected app |
-| `selector` | `ElementSelector` | Search criteria (see below) |
+| `selector` | `ElementSelector` | Search criteria |
 
 **ElementSelector:**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `type` | `ElementType` | Element type filter (e.g., `'button'`, `'textfield'`) |
-| `label` | `string` | Label text filter (exact or regex) |
+| `type` | `ElementType` | Element type (e.g., `'button'`, `'textfield'`) |
+| `label` | `string` | Label text (case-insensitive substring) |
+| `labelExact` | `string` | Exact label match |
+| `labelRegex` | `string` | Regex pattern for label |
 | `properties` | `Record<string, unknown>` | Property value filters |
 | `visible` | `boolean` | Visibility filter |
 | `enabled` | `boolean` | Enabled state filter |
+| `maxDepth` | `number` | Max search depth |
 | `limit` | `number` | Max results to return |
 
 ```typescript
-// Find all visible buttons with "Save" in the label
-const btns = await uab.query(pid, {
-  type: 'button',
-  label: 'Save',
-  visible: true,
-  limit: 5
-});
+// By type
+const buttons = await uab.query(pid, { type: 'button' });
+
+// By label (fuzzy)
+const submit = await uab.query(pid, { label: 'Submit' });
+
+// Combined with constraints
+const visible = await uab.query(pid, { type: 'textfield', visible: true, limit: 5 });
 ```
 
 #### `act(pid: number, elementId: string, action: ActionType, params?: ActionParams): Promise<ActionResult>`
-Perform an action on a UI element. Permission-checked, retried on transient failure, cache-invalidating.
+
+Perform an action on a UI element. **Permission-checked, retried on transient failure, cache-invalidating.**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `pid` | `number` | Process ID |
 | `elementId` | `string` | Target element ID (from enumerate/query) |
-| `action` | `ActionType` | Action to perform (see action list below) |
+| `action` | `ActionType` | Action to perform |
 | `params` | `ActionParams` | Optional action parameters |
 
-**ActionParams:**
+**What happens internally:**
+1. Permission check (rate limit + risk assessment)
+2. Audit record created
+3. `withRetry()` wraps the action
+4. Cache invalidated if action is mutating
 
-| Field | Type | Used By |
-|-------|------|---------|
-| `text` | `string` | `type` |
-| `value` | `string` | `select`, `writeCell` |
-| `direction` | `'up' \| 'down' \| 'left' \| 'right'` | `scroll` |
-| `amount` | `number` | `scroll` |
-| `x` | `number` | `move` |
-| `y` | `number` | `move` |
-| `width` | `number` | `resize` |
-| `height` | `number` | `resize` |
-| `cell` | `string` | `readCell`, `writeCell`, `readFormula` |
-| `range` | `string` | `readRange`, `writeRange` |
-| `sheet` | `string` | Excel sheet name |
-| `url` | `string` | `navigate`, `setCookie`, `deleteCookie` |
-| `name` | `string` | `setCookie`, `deleteCookie` |
-| `domain` | `string` | `setCookie`, `deleteCookie`, `clearCookies` |
-| `secure` | `boolean` | `setCookie` |
-| `httpOnly` | `boolean` | `setCookie` |
-| `sameSite` | `'Strict' \| 'Lax' \| 'None'` | `setCookie` |
-| `expires` | `number` | `setCookie` (Unix timestamp) |
-| `key` | `string` | `setLocalStorage`, `deleteLocalStorage`, etc. |
-| `javascript` | `string` | `executeScript` |
-| `tabId` | `string` | `switchTab`, `closeTab` |
+```typescript
+await uab.act(pid, 'btn_1', 'click');
+await uab.act(pid, 'input_3', 'type', { text: 'Hello' });
+await uab.act(pid, 'select_5', 'select', { value: 'Option A' });
+await uab.act(pid, 'elem_2', 'scroll', { direction: 'down', amount: 3 });
+```
 
 **ActionResult:**
 
 ```typescript
 {
   success: boolean;
-  data?: unknown;      // Return data (cell values, document text, etc.)
-  error?: string;      // Error message if failed
-  method?: string;     // Control method used
+  result?: unknown;       // Return data (cell values, document text, etc.)
+  stateChanges?: UIElement[];  // Elements that changed
+  error?: string;         // Error message if failed
 }
 ```
 
 #### `state(pid: number): Promise<AppState>`
-Get current application state. Cached (2s TTL).
 
-**AppState:**
+Get current application state. **Cached for 2 seconds.**
 
 ```typescript
-{
-  window?: {
-    title: string;
-    size: { width: number; height: number };
-    position: { x: number; y: number };
-    focused: boolean;
-  };
-  activeElement?: UIElement;
-  modals?: UIElement[];
-  menus?: UIElement[];
-}
+const state = await uab.state(pid);
+// { window: { title, size, position, focused }, activeElement, modals, menus }
 ```
 
 ---
 
-### Keyboard Input
+### Keyboard & Window
 
 #### `keypress(pid: number, key: string): Promise<ActionResult>`
-Send a single keypress to the app.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `pid` | `number` | Process ID |
-| `key` | `string` | Key name (e.g., `'Enter'`, `'Tab'`, `'F5'`, `'Escape'`) |
-
-#### `hotkey(pid: number, keys: string[]): Promise<ActionResult>`
-Send a key combination.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `pid` | `number` | Process ID |
-| `keys` | `string[]` | Key names (e.g., `['ctrl', 's']`, `['alt', 'F4']`) |
-
----
-
-### Window Management
-
-#### `minimize(pid: number): Promise<ActionResult>`
-#### `maximize(pid: number): Promise<ActionResult>`
-#### `restore(pid: number): Promise<ActionResult>`
-#### `closeWindow(pid: number): Promise<ActionResult>`
-#### `moveWindow(pid: number, x: number, y: number): Promise<ActionResult>`
-#### `resizeWindow(pid: number, width: number, height: number): Promise<ActionResult>`
-#### `screenshot(pid: number, outputPath?: string): Promise<ActionResult>`
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `pid` | `number` | Process ID |
-| `x`, `y` | `number` | New position (for `moveWindow`) |
-| `width`, `height` | `number` | New size (for `resizeWindow`) |
-| `outputPath` | `string` | File path for screenshot (default: `data/screenshots/`) |
-
----
-
-### Advanced
-
-#### `executeChain(chain: ChainDefinition): Promise<ChainResult>`
-Execute a multi-step action workflow. See [ChainExecutor](#chainexecutor).
-
-#### `getHealthSummary(): Array<HealthEntry>`
-Get health status of all connections.
+Send a single keypress.
 
 ```typescript
-// { pid: number, name: string, healthy: boolean, uptimeMs: number, failures: number, method: string }
+await uab.keypress(pid, 'Enter');
+await uab.keypress(pid, 'Tab');
+await uab.keypress(pid, 'Escape');
 ```
 
-#### `getCacheStats(): CacheStats`
-Get cache performance statistics.
+#### `hotkey(pid: number, keys: string | string[]): Promise<ActionResult>`
 
-#### `getAuditLog(limit?: number): AuditEntry[]`
-Get recent action audit log. Default limit: 50.
+Send a key combination.
+
+```typescript
+await uab.hotkey(pid, 'ctrl+s');
+await uab.hotkey(pid, ['ctrl', 'shift', 's']);
+```
+
+#### `window(pid: number, action: string, params?): Promise<ActionResult>`
+
+Window management.
+
+```typescript
+await uab.window(pid, 'maximize');
+await uab.window(pid, 'minimize');
+await uab.window(pid, 'restore');
+await uab.window(pid, 'close');
+await uab.window(pid, 'move', { x: 100, y: 100 });
+await uab.window(pid, 'resize', { width: 800, height: 600 });
+```
+
+#### `screenshot(pid: number, outputPath?: string): Promise<ActionResult>`
+
+Capture a screenshot of the app window.
+
+```typescript
+await uab.screenshot(pid);  // Default: data/screenshots/uab-{pid}-{timestamp}.png
+await uab.screenshot(pid, 'my-screenshot.png');
+```
+
+---
+
+### Diagnostics
+
+#### `cacheStats(): CacheStats & { hitRate: number }`
+
+Cache hit/miss statistics.
+
+#### `auditLog(limit?: number): AuditEntry[]`
+
+Recent audit log of all actions. Default limit: 50.
+
+#### `healthSummary(): HealthEntry[]`
+
+Connection health summary (persistent mode only).
+
+---
+
+### Helper Methods
 
 #### `countElements(elements: UIElement[]): number`
-Count total elements in a tree (including nested children).
 
-#### `flattenTree(elements: UIElement[], maxDepth?: number): Array<{ depth: number; element: UIElement }>`
-Flatten a nested element tree into a flat list with depth info.
+Count total elements recursively (including nested children).
+
+#### `flattenTree(elements: UIElement[], maxDepth?, depth?): FlatElement[]`
+
+Flatten a nested UI tree into a flat list with depth info for display.
+
+---
+
+## AppRegistry
+
+**Import:** `import { AppRegistry } from 'universal-app-bridge'`
+
+In-memory knowledge base with JSON persistence. The "brain" of UAB.
+
+### Constructor
+
+```typescript
+new AppRegistry(options?: RegistryOptions)
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `profileDir` | `string` | `'data/uab-profiles'` | Directory for JSON persistence |
+| `autoSave` | `boolean` | `true` | Auto-save after every mutation |
+
+### Persistence
+
+#### `load(): void`
+
+Load profiles from `registry.json`. Safe to call if file doesn't exist.
+
+#### `save(): void`
+
+Persist current registry to JSON file.
+
+### Registration
+
+#### `register(app: DetectedApp): AppProfile`
+
+Register a detected app. Returns the profile (new or updated).
+
+#### `registerAll(apps: DetectedApp[]): AppProfile[]`
+
+Bulk register with single save at the end. Uses deferred auto-save.
+
+#### `update(executable: string, patch: Partial<AppProfile>): boolean`
+
+Update specific fields of an existing profile.
+
+```typescript
+registry.update('code.exe', {
+  preferredMethod: 'cdp',
+  pid: 12345,
+  lastSeen: Date.now()
+});
+```
+
+#### `remove(executable: string): boolean`
+
+Remove an app profile from the registry.
+
+### Lookup
+
+| Method | Returns | Time | Description |
+|--------|---------|------|-------------|
+| `byPid(pid)` | `AppProfile \| undefined` | O(1) | Lookup via PID index |
+| `byName(name)` | `AppProfile[]` | O(n) | Case-insensitive substring match |
+| `byExecutable(exe)` | `AppProfile \| undefined` | O(1) | Exact executable key |
+| `byFramework(type)` | `AppProfile[]` | O(n) | Filter by framework |
+| `all()` | `AppProfile[]` | O(1) | Get all profiles |
+| `count()` | `number` | O(1) | Number of registered apps |
+| `has(exe)` | `boolean` | O(1) | Check if app exists |
+
+### Conversion
+
+#### `toDetectedApp(profile: AppProfile): DetectedApp`
+
+Convert a registry profile back to `DetectedApp` format for use with router/plugin APIs.
 
 ---
 
 ## Types
+
+### AppProfile
+
+```typescript
+interface AppProfile {
+  executable: string;       // Stable key: "code.exe" (lowercase)
+  name: string;             // "Visual Studio Code"
+  pid?: number;             // Last known PID (may be stale)
+  framework: FrameworkType; // "electron"
+  confidence: number;       // 0.0-1.0
+  preferredMethod?: ControlMethod;  // Learned from connection
+  connectionInfo?: Record<string, unknown>;  // Framework-specific
+  path?: string;            // Full executable path
+  windowTitle?: string;     // Last window title
+  lastSeen: number;         // Unix timestamp
+  tags?: string[];          // User-defined tags
+}
+```
 
 ### UIElement
 
 ```typescript
 interface UIElement {
   id: string;                          // Unique element identifier
-  type: ElementType;                   // Normalized element type
+  type: ElementType;                   // Normalized type
   label: string;                       // Display text / accessible name
   properties: Record<string, unknown>; // Framework-specific properties
   bounds: Bounds;                      // { x, y, width, height }
-  children: UIElement[];               // Nested child elements
+  children: UIElement[];               // Nested children
   actions: ActionType[];               // Available actions
-  visible: boolean;                    // Whether element is visible
-  enabled: boolean;                    // Whether element is enabled/interactive
-  meta?: Record<string, unknown>;      // Plugin-specific metadata
+  visible: boolean;                    // Visibility state
+  enabled: boolean;                    // Interactive state
+  meta?: Record<string, unknown>;      // Plugin metadata
 }
 ```
-
-### ElementType (42 types)
-
-**Containers:** `window`, `dialog`, `container`, `toolbar`, `statusbar`, `tabpanel`
-
-**Input:** `textfield`, `textarea`, `checkbox`, `radio`, `select`, `slider`, `spinner`
-
-**Lists:** `list`, `listitem`, `table`, `tablerow`, `tablecell`, `tree`, `treeitem`
-
-**Navigation:** `menu`, `menuitem`, `tab`, `link`
-
-**Display:** `label`, `heading`, `image`, `separator`, `progressbar`, `scrollbar`, `tooltip`
-
-**Special:** `unknown`
-
-### ActionType (61 types)
-
-**Click/Interact:** `click`, `doubleclick`, `rightclick`, `focus`, `hover`
-
-**Text:** `type`, `clear`, `select`
-
-**Toggle:** `check`, `uncheck`, `toggle`, `expand`, `collapse`
-
-**Invoke:** `invoke`, `contextmenu`
-
-**Keyboard:** `keypress`, `hotkey`
-
-**Window:** `minimize`, `maximize`, `restore`, `close`, `move`, `resize`, `screenshot`
-
-**Office:** `readDocument`, `readCell`, `writeCell`, `readRange`, `writeRange`, `getSheets`, `readFormula`, `readSlides`, `readSlideText`, `readEmails`, `composeEmail`, `sendEmail`
-
-**Browser:** `navigate`, `goBack`, `goForward`, `reload`, `getTabs`, `switchTab`, `closeTab`, `newTab`, `getCookies`, `setCookie`, `deleteCookie`, `clearCookies`, `getLocalStorage`, `setLocalStorage`, `deleteLocalStorage`, `clearLocalStorage`, `getSessionStorage`, `setSessionStorage`, `deleteSessionStorage`, `clearSessionStorage`, `executeScript`
 
 ### DetectedApp
 
 ```typescript
 interface DetectedApp {
-  pid: number;              // Process ID
-  name: string;             // Application name
-  path?: string;            // Executable path
-  framework: FrameworkType; // Detected framework
-  confidence: number;       // Detection confidence (0-1)
-  windowTitle?: string;     // Main window title
-  commandLine?: string;     // Process command line
-  modules?: string[];       // Loaded DLL modules
+  pid: number;
+  name: string;
+  path: string;
+  framework: FrameworkType;
+  confidence: number;
+  connectionInfo?: Record<string, unknown>;
+  windowTitle?: string;
 }
 ```
 
@@ -359,14 +476,81 @@ type FrameworkType =
 type ControlMethod = 'direct-api' | 'uab-hook' | 'accessibility' | 'vision';
 ```
 
-### Bounds
+### ElementType (32 types)
+
+**Containers:** `window`, `dialog`, `container`, `toolbar`, `statusbar`, `tabpanel`
+
+**Input:** `textfield`, `textarea`, `checkbox`, `radio`, `select`, `slider`
+
+**Lists:** `list`, `listitem`, `table`, `tablerow`, `tablecell`, `tree`, `treeitem`
+
+**Navigation:** `menu`, `menuitem`, `tab`, `link`
+
+**Display:** `label`, `heading`, `image`, `separator`, `progressbar`, `scrollbar`, `tooltip`
+
+**Interactive:** `button`
+
+**Special:** `unknown`
+
+### ActionType (61 types)
+
+**Click:** `click`, `doubleclick`, `rightclick`, `focus`, `hover`, `contextmenu`
+
+**Text:** `type`, `clear`, `select`
+
+**Toggle:** `check`, `uncheck`, `toggle`, `expand`, `collapse`, `invoke`
+
+**Scroll:** `scroll`
+
+**Keyboard:** `keypress`, `hotkey`
+
+**Window:** `minimize`, `maximize`, `restore`, `close`, `move`, `resize`, `screenshot`
+
+**Office:** `readDocument`, `readCell`, `writeCell`, `readRange`, `writeRange`, `getSheets`, `readFormula`, `readSlides`, `readSlideText`, `readEmails`, `composeEmail`, `sendEmail`
+
+**Browser:** `navigate`, `goBack`, `goForward`, `reload`, `getTabs`, `switchTab`, `closeTab`, `newTab`, `getCookies`, `setCookie`, `deleteCookie`, `clearCookies`, `getLocalStorage`, `setLocalStorage`, `deleteLocalStorage`, `clearLocalStorage`, `getSessionStorage`, `setSessionStorage`, `deleteSessionStorage`, `clearSessionStorage`, `executeScript`
+
+### ActionParams
 
 ```typescript
-interface Bounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+interface ActionParams {
+  text?: string;             // type action
+  value?: string;            // select, writeCell
+  direction?: string;        // scroll direction
+  amount?: number;           // scroll amount
+  key?: string;              // keypress virtual key
+  keys?: string[];           // hotkey combo
+  x?: number; y?: number;    // move position
+  width?: number; height?: number;  // resize dimensions
+  outputPath?: string;       // screenshot path
+  row?: number; col?: number;  // Excel cell
+  sheet?: string;            // Excel sheet name
+  cellRange?: string;        // Excel range (A1:B5)
+  formula?: string;          // Excel formula
+  values?: string[][];       // writeRange 2D array
+  to?: string; subject?: string; body?: string;  // Outlook email
+  url?: string; domain?: string;  // Browser navigation/cookies
+  cookieName?: string; cookieValue?: string;  // Cookie CRUD
+  storageKey?: string; storageValue?: string;  // Web storage
+  tabId?: string;            // Tab management
+  script?: string;           // JavaScript execution
+}
+```
+
+### AppState
+
+```typescript
+interface AppState {
+  window: {
+    title: string;
+    size: { width: number; height: number };
+    position: { x: number; y: number };
+    focused: boolean;
+  };
+  activeElement?: UIElement;
+  modals: UIElement[];
+  menus: UIElement[];
+  clipboard?: string;
 }
 ```
 
@@ -376,59 +560,31 @@ interface Bounds {
 
 **Import:** `import { ElementCache } from 'universal-app-bridge'`
 
-Smart caching layer with TTL and intelligent invalidation.
-
-### Constructor
-
-```typescript
-new ElementCache(options?: CacheOptions)
-```
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `treeTtl` | `number` | `5000` | Tree cache TTL in ms |
-| `queryTtl` | `number` | `3000` | Query cache TTL in ms |
-| `stateTtl` | `number` | `2000` | State cache TTL in ms |
-| `maxQueriesPerPid` | `number` | `50` | Max cached queries per PID |
+Three-tier cache with TTL and action-triggered invalidation.
 
 ### Methods
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `getTree(pid)` | `UIElement[] \| null` | Get cached tree |
+| `getTree(pid)` | `UIElement[] \| null` | Get cached tree (5s TTL) |
 | `setTree(pid, tree)` | `void` | Store tree |
-| `getQuery(pid, selector)` | `UIElement[] \| null` | Get cached query result |
-| `setQuery(pid, selector, results)` | `void` | Store query result |
-| `getState(pid)` | `unknown \| null` | Get cached state |
+| `getQuery(pid, selector)` | `UIElement[] \| null` | Get cached query (3s TTL) |
+| `setQuery(pid, selector, results)` | `void` | Store query |
+| `getState(pid)` | `unknown \| null` | Get cached state (2s TTL) |
 | `setState(pid, state)` | `void` | Store state |
-| `invalidate(pid)` | `void` | Clear all cache for a PID |
+| `invalidate(pid)` | `void` | Clear all cache for PID |
 | `invalidateIfNeeded(pid, action)` | `void` | Clear if action is mutating |
 | `shouldInvalidate(action)` | `boolean` | Check if action type is mutating |
 | `clear()` | `void` | Clear entire cache |
 | `remove(pid)` | `void` | Remove specific PID |
-| `getStats()` | `CacheStats` | Get hit/miss statistics |
-| `getHitRate()` | `number` | Hit rate as percentage |
-
-### CacheStats
-
-```typescript
-{
-  treeCacheSize: number;
-  queryCacheSize: number;
-  stateCacheSize: number;
-  totalHits: number;
-  totalMisses: number;
-  invalidations: number;
-}
-```
+| `getStats()` | `CacheStats` | Hit/miss statistics |
+| `getHitRate()` | `number` | Hit rate percentage |
 
 ---
 
 ## PermissionManager
 
 **Import:** `import { PermissionManager } from 'universal-app-bridge'`
-
-Safety model with risk classification, rate limiting, and audit logging.
 
 ### Constructor
 
@@ -440,52 +596,27 @@ new PermissionManager(options?: PermissionOptions)
 |--------|------|---------|-------------|
 | `blockDestructive` | `boolean` | `false` | Block destructive actions |
 | `rateLimit` | `number` | `100` | Max actions per window |
-| `rateLimitWindow` | `number` | `60000` | Rate limit window in ms |
-| `maxAuditEntries` | `number` | `1000` | Max audit log entries |
-| `exemptPids` | `Set<number>` | `new Set()` | PIDs exempt from rate limiting |
+| `rateLimitWindow` | `number` | `60000` | Window in ms |
+| `maxAuditEntries` | `number` | `1000` | Max audit log size |
 
 ### Methods
 
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `check(pid, action, app?)` | `PermissionCheck` | Check if action is allowed |
-| `record(pid, action, elementId, app, allowed, reason?)` | `void` | Record action to audit log |
-| `confirmDestructive(pid)` | `void` | Pre-approve destructive actions for PID |
-| `revokeDestructive(pid)` | `void` | Revoke destructive approval |
+| `record(pid, action, elementId, app, allowed, reason?)` | `void` | Record to audit log |
+| `confirmDestructive(pid)` | `void` | Pre-approve destructive actions |
 | `getRiskLevel(action)` | `RiskLevel` | Get risk classification |
-| `getAuditLog(limit?)` | `AuditEntry[]` | Get recent audit entries |
-| `getAuditForPid(pid, limit?)` | `AuditEntry[]` | Get audit for specific PID |
-| `getRateLimitStatus(pid)` | `RateLimitStatus` | Check rate limit status |
-| `clear()` | `void` | Clear all state |
+| `getAuditLog(limit?)` | `AuditEntry[]` | Get recent entries |
+| `getRateLimitStatus(pid)` | `RateLimitStatus` | Check rate limit |
 
 ### Risk Levels
 
-| Level | Actions | Default Behavior |
-|-------|---------|-----------------|
+| Level | Actions | Behavior |
+|-------|---------|----------|
 | `safe` | click, scroll, focus, hover, screenshot, window mgmt | Always allowed |
-| `moderate` | type, select, check, uncheck, toggle, keypress, hotkey | Allowed, logged |
-| `destructive` | close | Allowed by default, optionally blocked |
-
-### PermissionCheck
-
-```typescript
-{ allowed: boolean; riskLevel: RiskLevel; reason?: string }
-```
-
-### AuditEntry
-
-```typescript
-{
-  timestamp: number;
-  pid: number;
-  appName: string;
-  action: ActionType;
-  elementId: string;
-  riskLevel: RiskLevel;
-  allowed: boolean;
-  reason?: string;
-}
-```
+| `moderate` | type, select, check, toggle, keypress, hotkey | Allowed, logged |
+| `destructive` | close | Configurable blocking |
 
 ---
 
@@ -493,17 +624,15 @@ new PermissionManager(options?: PermissionOptions)
 
 **Import:** `import { ConnectionManager } from 'universal-app-bridge'`
 
-Health monitoring with auto-reconnect and stale cleanup.
-
 ### Constructor
 
 ```typescript
-new ConnectionManager(router: ControlRouter, options?: ConnectionManagerOptions)
+new ConnectionManager(router, options?)
 ```
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `healthCheckInterval` | `number` | `30000` | Health check interval in ms |
+| `healthCheckInterval` | `number` | `30000` | Check interval in ms |
 | `maxHealthFailures` | `number` | `3` | Failures before reconnect |
 | `maxReconnectAttempts` | `number` | `3` | Max reconnect attempts |
 | `staleTimeout` | `number` | `300000` | Remove after 5 min unhealthy |
@@ -512,27 +641,13 @@ new ConnectionManager(router: ControlRouter, options?: ConnectionManagerOptions)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `startMonitoring()` | `void` | Begin periodic health checks |
+| `startMonitoring()` | `void` | Begin health checks |
 | `stopMonitoring()` | `void` | Stop health checks |
-| `track(pid, app, connection)` | `void` | Register a connection |
-| `untrack(pid, reason?)` | `void` | Remove a connection |
-| `get(pid)` | `ConnectionEntry \| undefined` | Get connection entry |
+| `track(pid, app, connection)` | `void` | Register connection |
+| `untrack(pid, reason?)` | `void` | Remove connection |
 | `getAll()` | `ConnectionEntry[]` | Get all entries |
-| `getHealthSummary()` | `HealthEntry[]` | Summary of all connections |
-| `runHealthChecks()` | `Promise<void>` | Manual health check |
-| `onEvent(callback)` | `() => void` | Subscribe to events (returns unsubscribe) |
-| `shutdown()` | `Promise<void>` | Stop monitoring, disconnect all |
-
-### Connection Events
-
-| Event Type | Fields | Description |
-|-----------|--------|-------------|
-| `connected` | `pid, app, method` | New connection established |
-| `disconnected` | `pid, reason` | Connection dropped |
-| `reconnecting` | `pid, attempt` | Attempting reconnect |
-| `reconnected` | `pid, method` | Successfully reconnected |
-| `health-check-failed` | `pid, error, failures` | Health check failed |
-| `stale-removed` | `pid` | Removed after timeout |
+| `getHealthSummary()` | `HealthEntry[]` | Health summary |
+| `shutdown()` | `Promise<void>` | Stop everything |
 
 ---
 
@@ -540,100 +655,43 @@ new ConnectionManager(router: ControlRouter, options?: ConnectionManagerOptions)
 
 **Import:** `import { ChainExecutor } from 'universal-app-bridge'`
 
-Multi-step action workflow engine with conditional branching and verification.
-
 ### `execute(chain: ChainDefinition): Promise<ChainResult>`
 
-Execute a chain of steps sequentially.
+Execute a multi-step action workflow.
 
 ### ChainDefinition
 
 ```typescript
 {
-  name: string;            // Chain name (for logging)
-  pid: number;             // Target process
-  steps: ChainStep[];      // Steps to execute
-  stopOnError?: boolean;   // Stop on first error (default: true)
-  stepDelay?: number;      // Delay between steps in ms (default: 200)
+  name: string;          // Chain name
+  pid: number;           // Target process
+  steps: ChainStep[];    // Steps to execute
+  stopOnError?: boolean; // Default: true
+  stepDelay?: number;    // Delay between steps (ms, default: 200)
 }
 ```
 
 ### Step Types
 
-#### ActionStep
-```typescript
-{ type: 'action'; selector: ElementSelector; action: ActionType; params?: ActionParams; label?: string }
-```
-Find element matching selector and perform action.
+| Type | Fields | Description |
+|------|--------|-------------|
+| `action` | `selector`, `action`, `params?` | Find element and perform action |
+| `wait` | `selector`, `timeoutMs?`, `pollMs?`, `waitForAbsence?` | Wait for element |
+| `conditional` | `selector`, `ifPresent`, `ifAbsent?` | Branch on element presence |
+| `delay` | `ms` | Fixed delay |
+| `keypress` | `key` | Send keypress |
+| `hotkey` | `keys` | Send hotkey |
+| `typeText` | `selector`, `text`, `clearFirst?` | Type into element |
 
-#### WaitStep
-```typescript
-{ type: 'wait'; selector: ElementSelector; timeoutMs?: number; pollMs?: number; waitForAbsence?: boolean; label?: string }
-```
-Poll until element appears (or disappears). Default timeout: 10s, poll interval: 500ms.
+### Templates
 
-#### ConditionalStep
-```typescript
-{ type: 'conditional'; selector: ElementSelector; ifPresent: ChainStep[]; ifAbsent?: ChainStep[]; label?: string }
-```
-Branch based on element presence.
+#### `buildFormChain(pid, name, fields, submitSelector?)`
 
-#### DelayStep
-```typescript
-{ type: 'delay'; ms: number; label?: string }
-```
+Build a form-filling chain with optional submit.
 
-#### KeypressStep
-```typescript
-{ type: 'keypress'; key: string; label?: string }
-```
+#### `buildMenuChain(pid, name, menuPath)`
 
-#### HotkeyStep
-```typescript
-{ type: 'hotkey'; keys: string[]; label?: string }
-```
-
-#### TypeTextStep
-```typescript
-{ type: 'typeText'; selector: ElementSelector; text: string; clearFirst?: boolean; label?: string }
-```
-
-### ChainResult
-
-```typescript
-{
-  name: string;
-  success: boolean;
-  stepsCompleted: number;
-  totalSteps: number;
-  steps: StepResult[];
-  durationMs: number;
-  error?: string;
-}
-```
-
-### Pre-built Templates
-
-#### `buildFormChain(pid, name, fields, submitSelector?): ChainDefinition`
-
-Build a chain that fills out a form and optionally submits it.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `pid` | `number` | Target process |
-| `name` | `string` | Chain name |
-| `fields` | `Array<{ selector, value, clearFirst? }>` | Form fields |
-| `submitSelector` | `ElementSelector` | Optional submit button |
-
-#### `buildMenuChain(pid, name, menuPath): ChainDefinition`
-
-Build a chain that navigates a menu hierarchy.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `pid` | `number` | Target process |
-| `name` | `string` | Chain name |
-| `menuPath` | `string[]` | Menu labels to click (e.g., `['File', 'Save As...']`) |
+Build a menu navigation chain (e.g., `['File', 'Save As...']`).
 
 ---
 
@@ -643,27 +701,66 @@ Build a chain that navigates a menu hierarchy.
 
 ### `withRetry<T>(operation, options?): Promise<T>`
 
-Execute an operation with retry on transient failure.
-
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `maxRetries` | `number` | `2` | Maximum retry attempts |
+| `maxRetries` | `number` | `2` | Max retry attempts |
 | `baseDelay` | `number` | `500` | Base delay in ms |
-| `maxDelay` | `number` | `5000` | Maximum delay in ms |
+| `maxDelay` | `number` | `5000` | Max delay in ms |
 | `jitter` | `boolean` | `true` | Add 0-30% random jitter |
-| `timeout` | `number` | `30000` | Per-attempt timeout in ms |
-| `shouldRetry` | `(error, attempt) => boolean` | Auto | Custom retry predicate |
+| `timeout` | `number` | `30000` | Per-attempt timeout |
 | `label` | `string` | `'operation'` | Label for logging |
 
 **Retryable patterns:** `timeout`, `EPIPE`, `ECONNRESET`, `ECONNREFUSED`, `socket hang up`, `powershell exited`, `process not found`, `not responding`
 
 ### `withTimeout<T>(operation, timeoutMs, label?): Promise<T>`
 
-Execute with a timeout. Throws if operation exceeds time limit.
+Execute with timeout.
 
 ### `isRetryable(error: Error): boolean`
 
-Check if an error matches retryable patterns.
+Check if error matches retryable patterns.
+
+---
+
+## FrameworkDetector
+
+**Import:** `import { FrameworkDetector } from 'universal-app-bridge'`
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `detectAll()` | `Promise<DetectedApp[]>` | Full system scan (batched) |
+| `detectElectron()` | `Promise<DetectedApp[]>` | Electron apps only |
+| `detectByPid(pid)` | `Promise<DetectedApp \| null>` | Check specific PID |
+| `findByName(name)` | `Promise<DetectedApp[]>` | Search by name |
+| `clearCache()` | `void` | Clear detection cache |
+
+---
+
+## ControlRouter
+
+**Import:** `import { ControlRouter } from 'universal-app-bridge'`
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `connect(app)` | `Promise<RoutedConnection>` | Connect with cascade |
+| `getRoute(pid)` | `ControlRoute \| undefined` | Get current route |
+| `disconnect(pid)` | `Promise<void>` | Disconnect |
+| `disconnectAll()` | `Promise<void>` | Disconnect all |
+
+---
+
+## PluginManager
+
+**Import:** `import { PluginManager } from 'universal-app-bridge'`
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `register(plugin)` | `void` | Register plugin (order matters!) |
+| `findPlugin(app)` | `FrameworkPlugin \| null` | Find matching plugin |
+| `connect(app)` | `Promise<PluginConnection>` | Connect via plugin |
+| `getConnection(pid)` | `PluginConnection \| undefined` | Get active connection |
+| `disconnect(pid)` | `Promise<void>` | Disconnect |
+| `disconnectAll()` | `Promise<void>` | Disconnect all |
 
 ---
 
@@ -671,36 +768,32 @@ Check if an error matches retryable patterns.
 
 All commands output JSON. Usage: `node dist/uab/cli.js <command> [args]`
 
-### Discovery & Connection
+### Smart Discovery Commands
 
 | Command | Args | Description |
 |---------|------|-------------|
-| `detect` | `[--electron]` | List detected apps |
-| `connect` | `<name\|pid>` | Connect and return info |
-| `state` | `<pid>` | Get app state |
+| `scan` | `[--electron]` | Scan system, identify frameworks, register all apps |
+| `apps` | — | List known apps from registry (instant, no scan) |
+| `find` | `<name>` | Smart lookup: registry first, live detection fallback |
+| `profiles` | — | Show full registry with all metadata |
 
-### UI Interaction
+### Connection & Interaction
 
 | Command | Args | Description |
 |---------|------|-------------|
+| `connect` | `<name\|pid>` | Connect with automatic method selection |
 | `enumerate` | `<pid> [--depth N]` | Get flattened UI tree |
 | `query` | `<pid> [--type T] [--label L] [--limit N]` | Search elements |
 | `act` | `<pid> <elementId> <action> [--text T] [--value V]` | Perform action |
+| `state` | `<pid>` | Get app state |
 
-### Keyboard
+### Keyboard & Window
 
 | Command | Args | Description |
 |---------|------|-------------|
 | `keypress` | `<pid> <key>` | Send keypress |
 | `hotkey` | `<pid> <key1+key2+...>` | Send hotkey |
-
-### Window
-
-| Command | Args | Description |
-|---------|------|-------------|
-| `window` | `<pid> min\|max\|restore\|close` | Window control |
-| `window` | `<pid> move --x N --y N` | Move window |
-| `window` | `<pid> resize --width N --height N` | Resize window |
+| `window` | `<pid> min\|max\|restore\|close\|move\|resize` | Window control |
 | `screenshot` | `<pid> [--output path]` | Capture screenshot |
 
 ### Browser
@@ -715,102 +808,15 @@ All commands output JSON. Usage: `node dist/uab/cli.js <command> [args]`
 | `cookies` | `<pid> [--name N] [--domain D]` | Get cookies |
 | `setcookie` | `<pid> --name N --value V [opts]` | Set cookie |
 | `deletecookie` | `<pid> --name N [--domain D]` | Delete cookie |
-| `clearcookies` | `<pid> [--domain D]` | Clear all cookies |
-| `storage` | `<pid> [--type local\|session] [--action get\|set\|delete\|clear] [--key K] [--value V]` | Web storage |
+| `clearcookies` | `<pid> [--domain D]` | Clear cookies |
+| `storage` | `<pid> [--type local\|session] [--action ...]` | Web storage |
 | `exec` | `<pid> "<javascript>"` | Execute JavaScript |
 
-### Workflows
+### Workflows & Extension
 
 | Command | Args | Description |
 |---------|------|-------------|
 | `chain` | `<json>` or `--json '{...}'` | Execute action chain |
-
-### Chrome Extension
-
-| Command | Args | Description |
-|---------|------|-------------|
 | `ext-status` | — | Check extension bridge status |
-| `ext-install` | — | Generate icons + install guide |
-
-### Utility
-
-| Command | Args | Description |
-|---------|------|-------------|
+| `ext-install` | — | Extension install guide |
 | `help` | — | Show all commands |
-
----
-
-## FrameworkDetector
-
-**Import:** `import { FrameworkDetector } from 'universal-app-bridge'`
-
-### Methods
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `detectAll()` | `Promise<DetectedApp[]>` | Scan all running processes |
-| `detectElectron()` | `Promise<DetectedApp[]>` | Electron apps only |
-| `detectByPid(pid)` | `Promise<DetectedApp \| null>` | Check specific PID |
-| `findByName(name)` | `Promise<DetectedApp[]>` | Search by name |
-| `clearCache()` | `void` | Clear detection cache |
-
----
-
-## ControlRouter
-
-**Import:** `import { ControlRouter } from 'universal-app-bridge'`
-
-### Methods
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `connect(app)` | `Promise<RoutedConnection>` | Connect with best method |
-| `getRoute(pid)` | `ControlRoute \| undefined` | Get current route |
-| `disconnect(pid)` | `Promise<void>` | Disconnect |
-| `disconnectAll()` | `Promise<void>` | Disconnect all |
-| `fallback(pid)` | `Promise<RoutedConnection \| null>` | Try next method |
-
----
-
-## PluginManager
-
-**Import:** `import { PluginManager } from 'universal-app-bridge'`
-
-### Methods
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `register(plugin)` | `void` | Register a framework plugin |
-| `getRegisteredFrameworks()` | `FrameworkType[]` | List registered frameworks |
-| `hasPlugin(framework)` | `boolean` | Check if plugin exists |
-| `findPlugin(app)` | `FrameworkPlugin \| null` | Find matching plugin |
-| `connect(app)` | `Promise<PluginConnection>` | Connect via matching plugin |
-| `getConnection(pid)` | `PluginConnection \| undefined` | Get active connection |
-| `disconnect(pid)` | `Promise<void>` | Disconnect |
-| `disconnectAll()` | `Promise<void>` | Disconnect all |
-| `getActiveConnections()` | `Array<{ pid, app, connected }>` | List active |
-
-### FrameworkPlugin Interface
-
-```typescript
-interface FrameworkPlugin {
-  readonly framework: FrameworkType;
-  readonly name: string;
-  canHandle(app: DetectedApp): boolean;
-  connect(app: DetectedApp): Promise<PluginConnection>;
-}
-```
-
-### PluginConnection Interface
-
-```typescript
-interface PluginConnection {
-  enumerate(): Promise<UIElement[]>;
-  query(selector: ElementSelector): Promise<UIElement[]>;
-  act(elementId: string, action: ActionType, params?: ActionParams): Promise<ActionResult>;
-  state(): Promise<AppState>;
-  subscribe?(event: UABEventType, callback: UABEventCallback): Promise<Subscription>;
-  disconnect(): Promise<void>;
-  connected: boolean;
-}
-```

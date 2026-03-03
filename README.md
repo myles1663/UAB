@@ -2,17 +2,53 @@
 
 [![Tests](https://img.shields.io/badge/tests-155%20passing-brightgreen)]() [![License](https://img.shields.io/badge/license-BSL%201.1-blue)]() [![Node](https://img.shields.io/badge/node-%3E%3D18-green)]() [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)]()
 
-**Framework-level desktop app control for AI agents.**
+**Smart function discovery and framework-level desktop app control for AI agents.**
 
-Hook into UI frameworks to get structured, reliable access to any desktop application's interface — no cooperation from app developers required. UAB intercepts at the UI toolkit level using each framework's own introspection and debug capabilities for agent control.
+UAB doesn't just automate apps — it **discovers**, **identifies**, **learns**, and **remembers** how to control every application on your system. The first time it sees an app, it figures out what framework it uses, which control method works best, and stores that knowledge for instant recall. Every subsequent interaction is faster and smarter.
 
-## The Problem
+## The Core Innovation: Smart Function Discovery
 
-AI agents need to control local applications, but most apps expose no programmatic interface. Accessibility APIs are unreliable, vision+click is slow and brittle. The missing layer is **framework-level hooking**: intercepting at the UI toolkit level to get structured, reliable access to any app's interface.
+Most automation tools require you to know what app you're controlling and how to connect. UAB figures it out for you:
 
-### Core Insight
+```
+        ┌──────────────────────────────────────────────────────────┐
+        │              Smart Function Discovery                     │
+        │                                                          │
+        │  1. SCAN ─────────► DLL module scanning                  │
+        │     "What's running?"   Batch process enumeration        │
+        │                         Window title fetching            │
+        │                                   │                      │
+        │  2. IDENTIFY ─────► Framework signature matching         │
+        │     "What framework?"   electron.exe → Electron          │
+        │                         qt6core.dll  → Qt6               │
+        │                         xlcall32.dll → Office            │
+        │                         jvm.dll      → Java              │
+        │                                   │                      │
+        │  3. REGISTER ─────► In-memory Map + JSON persistence     │
+        │     "Remember this"     O(1) lookup by PID or name       │
+        │                         Dual-indexed (exe + PID)         │
+        │                         Git-friendly registry.json       │
+        │                                   │                      │
+        │  4. CONNECT ──────► Plugin cascade with fallback         │
+        │     "Best method?"      CDP → COM → UIA (automatic)     │
+        │                         Preferred method remembered      │
+        │                                   │                      │
+        │  5. LEARN ────────► Update registry with results         │
+        │     "Next time faster"  Store preferred control method   │
+        │                         Cache element trees              │
+        │                         Track connection health          │
+        └──────────────────────────────────────────────────────────┘
+```
 
-The vast majority of desktop applications are built on a small number of UI frameworks. Hook into 6-7 frameworks and you cover 90%+ of the software people actually use. Each framework already has introspection or debug capabilities built in for developer tooling — UAB repurposes those capabilities for agent control.
+### What Makes This "Smart"?
+
+| Traditional Automation | UAB Smart Discovery |
+|----------------------|---------------------|
+| You specify the app and how to connect | UAB scans the system and finds everything automatically |
+| Hard-coded framework assumptions | DLL scanning identifies the exact framework with confidence scores |
+| No memory between sessions | Registry persists knowledge in JSON — instant recall next time |
+| Single control method | Cascade tries best method first, falls back automatically |
+| Manual configuration per app | Zero-config — scan once, control anything |
 
 ## Quick Start
 
@@ -22,136 +58,267 @@ The vast majority of desktop applications are built on a small number of UI fram
 import { UABConnector } from 'universal-app-bridge';
 
 const uab = new UABConnector();
+await uab.start();
 
-// Discover running apps
-const apps = await uab.detect();
-console.log(apps);
-// [{ pid: 1234, name: 'Slack', framework: 'electron', confidence: 0.9 }]
+// 1. SCAN — Discover everything running
+const apps = await uab.scan();
+// → 79 apps found, frameworks identified, profiles registered
 
-// Connect to an app
-await uab.connect(apps[0]);
+// 2. FIND — Smart lookup (registry first, live detection fallback)
+const excel = await uab.find('excel');
+// → Instant hit from registry (O(1) Map lookup)
 
-// Find all buttons
-const buttons = await uab.query(apps[0].pid, { type: 'button' });
+// 3. CONNECT — Best method selected automatically
+const conn = await uab.connect('excel');
+// → { pid: 5678, name: 'EXCEL', framework: 'office', method: 'com+uia', elementCount: 342 }
 
-// Click one
-await uab.act(apps[0].pid, buttons[0].id, 'click');
+// 4. QUERY — Search the UI tree
+const buttons = await uab.query(conn.pid, { type: 'button', label: 'Save' });
 
-// Get app state
-const state = await uab.state(apps[0].pid);
+// 5. ACT — Perform actions (permission-checked, retried, cache-aware)
+await uab.act(conn.pid, buttons[0].id, 'click');
+
+// Next session: scan() is instant because registry.json remembers everything
+await uab.stop();
 ```
 
-### As a CLI (for AI agents)
+### As a CLI (for any AI agent)
 
-The CLI outputs pure JSON, designed for Claude/GPT/any AI agent calling via bash:
+The CLI outputs pure JSON — designed for Claude, GPT, or any agent calling via bash:
 
 ```bash
-# Scan for controllable apps
-uab detect
+# Scan and register all running apps
+uab scan
+# → { "success": true, "apps": [...79 apps with frameworks...] }
 
-# Connect and enumerate UI
-uab connect Slack
-uab enumerate 1234
+# List known apps from registry (instant, no scan needed)
+uab apps
+# → Instant recall from registry.json
 
-# Find specific elements
-uab query 1234 --type button --label "Send"
+# Smart search — registry first, live detection fallback
+uab find "notepad"
 
-# Perform actions
+# Connect with automatic method selection
+uab connect notepad
+# → { "pid": 1234, "method": "accessibility", "elementCount": 15 }
+
+# Query and act
+uab query 1234 --type button --label "Save"
 uab act 1234 btn_42 click
-uab act 1234 input_7 type --text "Hello world"
 
-# Keyboard input
-uab keypress 1234 Enter
-uab hotkey 1234 ctrl+s
-
-# Window management
-uab window 1234 maximize
-uab screenshot 1234 --output screen.png
-
-# Get app state
-uab state 1234
+# Registry persists between sessions — next time is instant
+uab profiles
+# → Shows all known apps with framework info and preferred methods
 ```
 
 ## Architecture
 
 ```
-Agent Runtime (Claude / GPT / Any Agent)
+Agent Runtime (Claude / GPT / Any AI Agent)
          │
-         ▼
-┌─────────────────────────────────────┐
-│      Universal App Bridge (UAB)     │
-│                                     │
-│  Detector ──▶ Router ──▶ Plugins    │
-│                  │                  │
-│    ┌─────────────┼─────────────┐    │
-│    │  Electron  Office  Qt     │    │
-│    │  Browser   GTK    Java    │    │
-│    │  Flutter   Win-UIA (any)  │    │
-│    └───────────────────────────┘    │
-│                                     │
-│  Cache │ Permissions │ Health │ Retry│
-└─────────────────────────────────────┘
+    Library API  or  CLI (JSON output)
          │
-         ▼
+┌────────┴───────────────────────────────────────────────────┐
+│              Universal App Bridge (UAB)                      │
+│                                                             │
+│  ┌─────────────┐  ┌────────────┐  ┌─────────────────────┐  │
+│  │  Smart       │  │  App       │  │   UAB Connector     │  │
+│  │  Detector    │  │  Registry  │  │   (Public API)      │  │
+│  │             │  │  (Brain)   │  │                     │  │
+│  │ DLL scan    │  │ Map + JSON │  │ scan() find()       │  │
+│  │ Batch enum  │  │ O(1) lookup│  │ connect() query()   │  │
+│  │ Signatures  │  │ Persist    │  │ act() state()       │  │
+│  └──────┬──────┘  └─────┬──────┘  └──────────┬──────────┘  │
+│         │               │                     │             │
+│         └───────────────┼─────────────────────┘             │
+│                         │                                   │
+│  ┌──────────────────────┴────────────────────────────────┐  │
+│  │                  Plugin Manager                        │  │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │  │
+│  │  │Chrome Ext│ │ Browser  │ │ Electron │ │  Office  │ │  │
+│  │  │  (WS)    │ │  (CDP)   │ │  (CDP)   │ │(COM+UIA) │ │  │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ │  │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │  │
+│  │  │   Qt     │ │   GTK    │ │  Java    │ │ Flutter  │ │  │
+│  │  │  (UIA)   │ │  (UIA)   │ │(JAB→UIA) │ │  (UIA)   │ │  │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ │  │
+│  │  ┌──────────┐                                         │  │
+│  │  │ Win-UIA  │ ← Universal fallback (any Windows app)  │  │
+│  │  └──────────┘                                         │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                             │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐   │
+│  │  Cache   │ │Permission│ │  Retry   │ │ Chain Engine │   │
+│  │ (3-tier) │ │ (Audit)  │ │(Backoff) │ │ (Workflows)  │   │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────────┘   │
+│                                                             │
+│  ┌──────────────────┐  ┌────────────────────────────────┐   │
+│  │ Control Router   │  │  Connection Manager            │   │
+│  │ (Cascade+Fallback│  │  (Health+Reconnect+Cleanup)    │   │
+│  └──────────────────┘  └────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+         │
+    Operating System (CDP, UIA, COM, PowerShell, WMI)
+         │
     Desktop Applications
 ```
 
-**Cascade pattern:** UAB tries framework-native access first (CDP for Electron, COM for Office), falls back through UI Automation, then accessibility, then vision — automatically, per-connection.
+### The Cascade Pattern
+
+UAB picks the best control method for each app automatically, falling back through the stack if something fails:
 
 ```
-Priority 1: Chrome Extension Bridge (browsers — no relaunch)
+Priority 1: Chrome Extension Bridge (browsers — no relaunch needed)
 Priority 2: CDP Browser Plugin (browsers — with debug flag)
-Priority 3: Direct API / Framework Hook (Electron CDP, etc.)
-Priority 4: Windows UI Automation (universal fallback)
+Priority 3: Framework Hook (Electron CDP, Office COM)
+Priority 4: Windows UI Automation (universal fallback — any windowed app)
 ```
+
+If a CDP connection drops mid-session, the router transparently falls back to UIA. The agent never sees the switch.
+
+## Smart Discovery Deep Dive
+
+### Phase 1: Detection
+
+UAB scans the system using **three batched PowerShell calls** (not per-process — batched for speed):
+
+1. **WMI Process Enumeration** — Get all running processes with PIDs, names, paths, command lines
+2. **Batch DLL Module Scan** — One PowerShell call scans loaded modules for ALL processes (batches of 50)
+3. **Batch Window Title Scan** — One P/Invoke call via `EnumWindows` gets all visible window titles
+
+**Result:** Full system scan in 2-5 seconds. Finds 79+ controllable apps on a typical Windows desktop.
+
+### Phase 2: Framework Identification
+
+Each detected process is matched against **framework signatures**:
+
+```typescript
+// Example: How UAB identifies an Electron app
+{
+  framework: 'electron',
+  modules: ['electron.exe', 'libcef.dll', 'chrome_elf.dll', 'v8.dll'],
+  filePatterns: ['resources/app.asar', 'resources/app.asar.unpacked'],
+  commandLine: ['--type=renderer', 'electron', 'app.asar'],
+  baseConfidence: 0.9
+}
+```
+
+Confidence accumulates: base score + module matches + command-line matches + file pattern matches. An Electron app loading `chrome_elf.dll` AND having `resources/app.asar` gets confidence 0.95.
+
+**10 framework signatures** built in: Electron, Qt5, Qt6, GTK3, GTK4, WPF, .NET, Flutter, Java, Office.
+
+Plus **fast-path detection** for browsers (Chrome, Edge, Brave) and Office apps (Word, Excel, PowerPoint, Outlook) by executable name.
+
+### Phase 3: Registry & Persistence
+
+Every detected app is registered in the **App Registry** — UAB's brain:
+
+```typescript
+// What the registry stores per app
+interface AppProfile {
+  executable: string;       // Stable key: "code.exe"
+  name: string;             // "Visual Studio Code"
+  pid: number;              // Last known PID
+  framework: FrameworkType; // "electron"
+  confidence: number;       // 0.95
+  preferredMethod: string;  // "cdp" (learned from successful connection)
+  path: string;             // Full executable path
+  windowTitle: string;      // "project - Visual Studio Code"
+  lastSeen: number;         // Unix timestamp
+  tags: string[];           // User-defined categorization
+}
+```
+
+The registry uses **dual-indexed Maps** for O(1) lookups:
+- `Map<executable, AppProfile>` — lookup by executable name
+- `Map<pid, executable>` — lookup by PID → executable → profile
+
+**JSON persistence:** The entire registry is saved to `data/uab-profiles/registry.json` — a single, git-friendly file with readable diffs. No database required.
+
+### Phase 4: Smart Lookup
+
+When you call `find("excel")`, UAB doesn't scan the system again. It:
+
+1. **Checks the registry first** — O(1) Map lookup, case-insensitive substring match
+2. **Returns instantly** if found (< 1ms)
+3. **Only falls back to live detection** if not in registry
+
+This is why the first `scan()` takes 2-5 seconds, but every subsequent `find()` is instant.
+
+### Phase 5: Learning
+
+After each successful connection, UAB updates the registry with what worked:
+
+```typescript
+// After connecting to VS Code via CDP:
+registry.update('code.exe', {
+  preferredMethod: 'cdp',    // Remember: CDP works for this app
+  pid: 12345,                // Update last known PID
+  lastSeen: Date.now()       // Update timestamp
+});
+```
+
+Next time you connect to VS Code, UAB tries CDP first because it learned that's the best method.
 
 ## Supported Frameworks
 
-| Framework | Plugin | Apps Covered |
-|-----------|--------|-------------|
-| **Chrome/Edge/Brave** | Extension Bridge (WebSocket) | Any Chromium browser — tabs, cookies, DOM, storage, JS exec |
-| **Chrome/Edge/Brave** | CDP Fallback | Same browsers, requires `--remote-debugging-port` |
-| **Electron** | Chrome DevTools Protocol | VS Code, Slack, Discord, Notion, Obsidian, Spotify, Teams |
-| **MS Office** | COM Automation | Word, Excel, PowerPoint, Outlook |
-| **Qt 5/6** | UIA Bridge | VLC, Telegram Desktop, OBS Studio, VirtualBox, Wireshark |
-| **GTK 3/4** | UIA Bridge | GIMP, Inkscape, GNOME apps |
-| **WPF/.NET** | Windows UI Automation | Windows enterprise apps, Visual Studio |
-| **Flutter** | UIA Bridge | Google apps, Ubuntu desktop apps |
-| **Java Swing/FX** | JAB→UIA Bridge | JetBrains IDEs, Android Studio |
-| **Win32** | Windows UI Automation | Universal fallback for any Windows app |
+| Framework | Plugin | Method | Apps Covered |
+|-----------|--------|--------|-------------|
+| **Chrome/Edge/Brave** | Extension Bridge | WebSocket | Any Chromium browser — tabs, cookies, DOM, storage, JS exec |
+| **Chrome/Edge/Brave** | CDP Fallback | CDP | Same browsers, requires `--remote-debugging-port` |
+| **Electron** | Chrome DevTools Protocol | CDP | VS Code, Slack, Discord, Notion, Obsidian, Spotify, Teams |
+| **MS Office** | COM Automation + UIA | COM+UIA | Word, Excel, PowerPoint, Outlook |
+| **Qt 5/6** | UIA Bridge | UIA | VLC, Telegram Desktop, OBS Studio, VirtualBox, Wireshark |
+| **GTK 3/4** | UIA Bridge | UIA | GIMP, Inkscape, GNOME apps |
+| **WPF/.NET** | Windows UI Automation | UIA | Windows enterprise apps, Visual Studio |
+| **Flutter** | UIA Bridge | UIA | Google apps, Ubuntu desktop apps |
+| **Java Swing/FX** | JAB→UIA Bridge | UIA | JetBrains IDEs, Android Studio |
+| **Win32** | Windows UI Automation | UIA | Universal fallback for any Windows app |
 
 ## Unified API
 
 Every framework plugin maps its native UI tree into the same types:
 
-### `uab.detect()` — Discover Apps
+### `uab.scan()` — Discover & Register
 
 ```typescript
-const apps: DetectedApp[] = await uab.detect();
-// { pid, name, path, framework, confidence, windowTitle }
+const apps = await uab.scan();
+// Apps are detected, frameworks identified, and profiles registered
+// Registry persists to disk — next session starts with full knowledge
+```
+
+### `uab.find(name)` — Smart Lookup
+
+```typescript
+const results = await uab.find('slack');
+// 1. Checks registry (instant) → returns if found
+// 2. Falls back to live detection → registers result
+```
+
+### `uab.connect(target)` — Auto-Connect
+
+```typescript
+// By name (searches registry, then live-detects)
+const conn = await uab.connect('notepad');
+
+// By PID (checks registry, auto-detects if not found)
+const conn = await uab.connect(1234);
+
+// Returns: { pid, name, framework, method, elementCount }
 ```
 
 ### `uab.enumerate(pid)` — List UI Elements
 
 ```typescript
-const elements: UIElement[] = await uab.enumerate(pid);
-// Each element has: id, type, label, properties, bounds, children, actions, visible, enabled
+const tree = await uab.enumerate(pid);
+// Cached for 5 seconds — repeated calls are instant
 ```
 
 ### `uab.query(pid, selector)` — Search Elements
 
 ```typescript
-// By type
-const buttons = await uab.query(pid, { type: 'button' });
-
-// By label (fuzzy match)
-const submit = await uab.query(pid, { label: 'Submit' });
-
-// Combined
-const sendBtn = await uab.query(pid, { type: 'button', label: 'Send' });
-
-// With constraints
-const visible = await uab.query(pid, { type: 'textfield', visible: true, limit: 5 });
+const btns = await uab.query(pid, { type: 'button', label: 'Save' });
+// Cached for 3 seconds, auto-invalidated after mutating actions
 ```
 
 ### `uab.act(pid, elementId, action, params?)` — Perform Actions
@@ -159,121 +326,95 @@ const visible = await uab.query(pid, { type: 'textfield', visible: true, limit: 
 ```typescript
 await uab.act(pid, 'btn_1', 'click');
 await uab.act(pid, 'input_3', 'type', { text: 'Hello' });
-await uab.act(pid, 'select_5', 'select', { value: 'Option A' });
-await uab.act(pid, 'elem_2', 'scroll', { direction: 'down', amount: 3 });
+// Permission-checked → retried on transient failure → cache invalidated
 ```
 
-**Supported actions:** `click`, `doubleclick`, `rightclick`, `type`, `clear`, `select`, `scroll`, `focus`, `hover`, `expand`, `collapse`, `invoke`, `check`, `uncheck`, `toggle`, `keypress`, `hotkey`, `minimize`, `maximize`, `restore`, `close`, `move`, `resize`, `screenshot`
+## Production Hardening
 
-### `uab.state(pid)` — Get App State
+### Smart Three-Tier Cache
+
+```
+┌──────────────────────────────────────────┐
+│              Element Cache               │
+│                                          │
+│  Tree Cache    │  5s TTL per PID         │
+│  Query Cache   │  3s TTL, 50 max/PID    │
+│  State Cache   │  2s TTL per PID         │
+│                                          │
+│  Auto-invalidation on mutating actions:  │
+│  click, type, keypress, navigate, etc.   │
+│                                          │
+│  Safe (no invalidation):                 │
+│  focus, hover, scroll, screenshot, etc.  │
+└──────────────────────────────────────────┘
+```
+
+### Permission & Safety Model
+
+- **Risk classification:** safe / moderate / destructive
+- **Rate limiting:** 100 actions/min per PID (configurable)
+- **Audit log:** Last 1000 actions with timestamps, PIDs, elements, risk levels
+- **Destructive action gating:** `close` requires explicit confirmation when blocking is enabled
+
+### Health Monitoring
+
+- 30-second health check intervals
+- Auto-reconnect with exponential backoff (1s → 2s → 4s → 8s)
+- Stale connection cleanup after 5 minutes of failure
+- Event callbacks for connection state changes
+
+### Retry with Backoff
+
+- Exponential backoff with 0-30% jitter
+- Retryable error detection (ECONNRESET, timeout, EPIPE, socket hang up)
+- Per-operation timeout with configurable limits
+- Labeled operations for debugging
+
+## Action Chains
+
+Multi-step workflows with verification between steps:
 
 ```typescript
-const state: AppState = await uab.state(pid);
-// { window: { title, size, position, focused }, activeElement, modals, menus }
+const chain = {
+  name: 'fill-form',
+  pid: 1234,
+  steps: [
+    { type: 'action', selector: { label: 'Name' }, action: 'type', params: { text: 'John' } },
+    { type: 'wait', selector: { type: 'button', label: 'Submit' }, timeoutMs: 5000 },
+    { type: 'action', selector: { label: 'Submit' }, action: 'click' },
+  ],
+};
+
+const result = await chainExecutor.execute(chain);
 ```
 
 ## Chrome Extension Bridge
 
-UAB includes a Chrome Extension that connects to your running browser via WebSocket — **no browser relaunch required**. This is the preferred method for browser automation.
-
-### How It Works
+UAB includes a Chrome Extension (Manifest V3) that connects to your running browser via WebSocket — **no browser relaunch required**.
 
 ```
 ┌────────────────────┐    WebSocket     ┌────────────────────┐
 │   UAB Service      │◄───(port 8787)──►│  Chrome Extension  │
 │   (Node.js)        │    JSON protocol │  (Manifest V3)     │
 └────────────────────┘                  └────────────────────┘
-                                               │
-                                        chrome.tabs / cookies
-                                        chrome.scripting APIs
-                                               │
-                                        ┌──────▼─────────────┐
-                                        │  Chrome / Edge /   │
-                                        │  Brave Browser     │
-                                        └────────────────────┘
 ```
 
-### Installation
+**Full browser control:** Tabs, cookies, localStorage, sessionStorage, navigation, JavaScript execution, screenshots — all without relaunching the browser.
 
-1. Start UAB (`uab detect` or programmatically)
-2. Open Chrome → `chrome://extensions/`
-3. Enable **Developer mode** (toggle in top-right)
-4. Click **Load unpacked** → select `data/chrome-extension/`
-5. The extension auto-connects via WebSocket — done!
+## Session 0 Bridge
 
-### Browser Actions
-
-| Action | Description | Params |
-|--------|-------------|--------|
-| `getTabs` | List all open tabs | — |
-| `newTab` | Open a new tab | `{ url }` |
-| `closeTab` | Close a tab | `{ tabId }` |
-| `switchTab` | Activate a tab | `{ tabId }` |
-| `navigate` | Navigate to URL | `{ url }` |
-| `goBack` / `goForward` | Browser history | — |
-| `getCookies` | Read cookies | `{ domain?, url?, cookieName? }` |
-| `setCookie` | Set a cookie | `{ url, cookieName, cookieValue, ... }` |
-| `deleteCookie` / `clearCookies` | Remove cookies | `{ url?, cookieName?, domain? }` |
-| `getLocalStorage` / `setLocalStorage` | localStorage ops | `{ storageKey, storageValue? }` |
-| `getSessionStorage` / `setSessionStorage` | sessionStorage ops | `{ storageKey, storageValue? }` |
-| `executeScript` | Run JavaScript in page | `{ script }` |
-| `screenshot` | Capture visible tab | `{ outputPath? }` |
-
-## Advanced Features
-
-### Action Chains
-
-Multi-step workflows with verification between steps:
-
-```typescript
-import { ChainExecutor } from 'universal-app-bridge';
-
-const chain = {
-  name: 'fill-form',
-  steps: [
-    { type: 'action', elementId: 'name_input', action: 'type', params: { text: 'John' } },
-    { type: 'action', elementId: 'email_input', action: 'type', params: { text: 'john@example.com' } },
-    { type: 'wait', selector: { type: 'button', label: 'Submit' }, timeoutMs: 5000 },
-    { type: 'action', elementId: 'submit_btn', action: 'click' },
-  ],
-};
-
-const result = await uab.executeChain(chain);
-```
-
-### Smart Caching
-
-Element trees are cached with intelligent invalidation:
-- Tree cache: 5s TTL per PID
-- Query cache: 3s TTL, max 50 per PID
-- Automatic invalidation on mutating actions (click, type, etc.)
-
-### Permission & Safety Model
-
-Built-in safety controls for agent use:
-- **Risk levels:** safe, moderate, destructive
-- **Rate limiting:** 100 actions/min per PID (configurable)
-- **Audit log:** Last 1000 actions with timestamps
-- **Destructive action gating:** `close` requires confirmation
-
-### Health Monitoring
-
-Connection lifecycle management:
-- 30-second health check intervals
-- Auto-reconnect with exponential backoff (1s → 2s → 4s → 8s max)
-- Stale connection cleanup after 5 minutes of failure
-- Event callbacks for connection state changes
+UAB works even when running in Session 0 (SSH, Windows Services). It automatically detects Session 0 and routes PowerShell through the Task Scheduler with `/IT` flag to bridge to the interactive desktop session.
 
 ## Documentation
 
 | Document | What's Inside |
 |----------|--------------|
-| [**ARCHITECTURE.md**](ARCHITECTURE.md) | OS automation layer, cascade routing, data flow diagrams |
-| [**GETTING_STARTED.md**](GETTING_STARTED.md) | Install → configure → first interaction walkthrough |
-| [**API_REFERENCE.md**](API_REFERENCE.md) | Every method, parameter, and return type |
+| [**ARCHITECTURE.md**](ARCHITECTURE.md) | Smart discovery pipeline, cascade routing, plugin architecture, data flow |
+| [**GETTING_STARTED.md**](GETTING_STARTED.md) | Install → scan → discover → connect → control walkthrough |
+| [**API_REFERENCE.md**](API_REFERENCE.md) | Every method, parameter, and return type for UABConnector & AppRegistry |
 | [**SUPPORTED_APPLICATIONS.md**](SUPPORTED_APPLICATIONS.md) | Tested apps with specific operations and benchmarks |
-| [**SECURITY.md**](SECURITY.md) | Trust boundaries, credential handling, governance |
-| [**CONTRIBUTING.md**](CONTRIBUTING.md) | How to contribute, code style, PR guidelines |
+| [**SECURITY.md**](SECURITY.md) | Trust boundaries, permission model, audit trail |
+| [**CONTRIBUTING.md**](CONTRIBUTING.md) | How to contribute, write plugins, code standards |
 | [**CHANGELOG.md**](CHANGELOG.md) | Version history |
 
 ## Key Numbers
@@ -281,16 +422,27 @@ Connection lifecycle management:
 | Metric | Value |
 |--------|-------|
 | Framework plugins | **9** (Electron, Browser, Office, Qt, GTK, Java, Flutter, Chrome Extension, Win-UIA) |
-| Element types | **42** normalized types |
+| Framework signatures | **10** (Electron, Qt5, Qt6, GTK3, GTK4, WPF, .NET, Flutter, Java, Office) |
+| Element types | **32** normalized types |
 | Action types | **61** (UI + keyboard + window + Office + browser) |
 | CLI commands | **20+** (all JSON output) |
 | Source files | **30** TypeScript files (~11,700 LOC) |
+| Apps detected | **79+** on typical Windows desktop |
+| Registry lookup | **O(1)** via dual-indexed Maps |
 
-## Element Types
+## Why UAB Matters
 
-UAB normalizes all framework-specific element types into a unified set:
+The person who solves reliable, universal app control for agents unlocks the entire "AI operating system" vision without needing anyone's permission. No waiting for app developers to build APIs. No begging SaaS companies for MCP servers. No fragile pixel-scraping.
 
-`window`, `button`, `textfield`, `textarea`, `checkbox`, `radio`, `select`, `menu`, `menuitem`, `list`, `listitem`, `table`, `tablerow`, `tablecell`, `tab`, `tabpanel`, `tree`, `treeitem`, `slider`, `progressbar`, `scrollbar`, `toolbar`, `statusbar`, `dialog`, `tooltip`, `image`, `link`, `label`, `heading`, `separator`, `container`
+**Smart Function Discovery is the key.** Any agent can scan a system, learn what's running, and control it — all with zero configuration. The registry remembers everything across sessions, making each interaction faster than the last.
+
+Hook into the framework, own the interface.
+
+## Requirements
+
+- **Node.js** >= 18.0.0
+- **Windows** (primary platform — UIA, COM, PowerShell)
+- Linux/macOS support via framework-specific plugins
 
 ## Environment Variables
 
@@ -300,32 +452,15 @@ UAB normalizes all framework-specific element types into a unified set:
 | `UAB_LOG_FILE` | _(none)_ | Optional file path for log output |
 | `LOG_LEVEL` | `info` | Fallback log level (if UAB_LOG_LEVEL not set) |
 
-## Requirements
-
-- **Node.js** >= 18.0.0
-- **Windows** (primary platform — UIA, COM, PowerShell)
-- Linux/macOS support via framework-specific plugins
-
-## Why UAB Matters
-
-The person who solves reliable, universal app control for agents unlocks the entire "AI operating system" vision without needing anyone's permission. No waiting for app developers to build APIs. No begging SaaS companies for MCP servers. No fragile pixel-scraping. You hook into the framework, you own the interface.
-
-Electron alone covers a massive surface area. Add Qt and you've got Linux mostly covered. Add macOS native and WPF and you've got cross-platform agent control that actually works.
-
 ## License
 
 Universal App Bridge is licensed under the **Business Source License 1.1**.
 
-**Permitted:** Personal use, academic research, evaluation, testing,
-open source projects.
+**Permitted:** Personal use, academic research, evaluation, testing, open source projects.
 
-**Requires commercial license:** Commercial agent runtimes, SaaS
-platforms, enterprise internal use (25+ employees), competing
-products, and deployments to 5+ users/devices.
+**Requires commercial license:** Commercial agent runtimes, SaaS platforms, enterprise internal use (25+ employees), competing products, and deployments to 5+ users/devices.
 
-**Patent notice:** This software is subject to pending patent
-applications. The Change Date license conversion does not grant
-patent rights beyond those stated in the License.
+**Patent notice:** This software is subject to pending patent applications. The Change Date license conversion does not grant patent rights beyond those stated in the License.
 
 Each version converts to Apache 2.0 four years after release.
 

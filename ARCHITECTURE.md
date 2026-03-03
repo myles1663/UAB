@@ -1,15 +1,18 @@
 # Architecture
 
-> How UAB hooks into the OS automation layer, discovers application UI trees, and achieves framework-level access without per-app plugins.
+> How UAB discovers apps, identifies frameworks, builds persistent knowledge, and achieves framework-level control — all automatically.
 
 ## Table of Contents
 
 - [System Overview](#system-overview)
+- [Smart Function Discovery Pipeline](#smart-function-discovery-pipeline)
+- [The App Registry (UAB's Brain)](#the-app-registry-uabs-brain)
 - [The Cascade Pattern](#the-cascade-pattern)
-- [Framework Detection](#framework-detection)
+- [Framework Detection Engine](#framework-detection-engine)
 - [Control Router](#control-router)
 - [Plugin Architecture](#plugin-architecture)
-- [Data Flow](#data-flow)
+- [UABConnector vs UABService](#uabconnector-vs-uabservice)
+- [Data Flow: End-to-End](#data-flow-end-to-end)
 - [Production Hardening](#production-hardening)
 - [Session Bridge](#session-bridge)
 
@@ -17,100 +20,423 @@
 
 ## System Overview
 
-UAB sits between the agent runtime and the desktop OS. It provides a unified API surface while using framework-specific protocols underneath.
+UAB sits between the agent runtime and the desktop OS. It provides a unified API while using framework-specific protocols underneath. The key innovation is the **Smart Function Discovery Pipeline** — a five-phase process that scans, identifies, registers, connects, and learns.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                      Agent Runtime                           │
 │              (Claude, GPT, Custom Agent)                     │
 └──────────────────────┬───────────────────────────────────────┘
-                       │  TypeScript API  or  CLI (JSON)
+                       │  UABConnector API  or  CLI (JSON)
                        ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                   UAB Service Layer                          │
+│                   Universal App Bridge                        │
 │                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │  Framework    │  │   Control    │  │   Connection      │  │
-│  │  Detector     │──│   Router     │──│   Manager         │  │
-│  │              │  │  (Cascade)   │  │  (Health/Reconnect)│  │
-│  └──────────────┘  └──────┬───────┘  └───────────────────┘  │
-│                           │                                  │
-│  ┌────────────────────────┴──────────────────────────────┐  │
-│  │                 Plugin Manager                        │  │
-│  │                                                       │  │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐│  │
-│  │  │ Electron │ │ Browser  │ │  Office  │ │   Qt     ││  │
-│  │  │  (CDP)   │ │  (CDP)   │ │(COM+UIA) │ │  (UIA)   ││  │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘│  │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐│  │
-│  │  │  GTK     │ │  Java    │ │ Flutter  │ │ Win-UIA  ││  │
-│  │  │  (UIA)   │ │(JAB→UIA) │ │  (UIA)   │ │(fallback)││  │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘│  │
-│  │  ┌──────────┐                                        │  │
-│  │  │Chrome Ext│                                        │  │
-│  │  │  (WS)    │                                        │  │
-│  │  └──────────┘                                        │  │
-│  └───────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │         Smart Function Discovery Pipeline            │    │
+│  │                                                      │    │
+│  │  SCAN ──► IDENTIFY ──► REGISTER ──► CONNECT ──► LEARN│    │
+│  │   │          │            │            │           │  │    │
+│  │  WMI     DLL scan     AppRegistry   Plugin     Update │    │
+│  │  batch   signatures   Map + JSON    cascade    registry│    │
+│  │  enum    matching     dual-index    fallback   persist │    │
+│  └──────────────────────────────────────────────────────┘    │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │              Plugin Manager (9 plugins)               │    │
+│  │                                                       │    │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐│    │
+│  │  │Chrome Ext│ │ Browser  │ │ Electron │ │  Office  ││    │
+│  │  │  (WS)    │ │  (CDP)   │ │  (CDP)   │ │(COM+UIA) ││    │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘│    │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐│    │
+│  │  │   Qt     │ │   GTK    │ │  Java    │ │ Flutter  ││    │
+│  │  │  (UIA)   │ │  (UIA)   │ │(JAB→UIA) │ │  (UIA)   ││    │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘│    │
+│  │  ┌──────────┐                                        │    │
+│  │  │ Win-UIA  │ ← Universal fallback                   │    │
+│  │  └──────────┘                                        │    │
+│  └───────────────────────────────────────────────────────┘    │
 │                                                              │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐   │
 │  │  Cache   │ │Permission│ │  Retry   │ │ Chain Engine │   │
-│  │ (TTL)    │ │ (Audit)  │ │(Backoff) │ │ (Workflows)  │   │
+│  │ (3-tier) │ │ (Audit)  │ │(Backoff) │ │ (Workflows)  │   │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────────┘   │
+│                                                              │
+│  ┌──────────────────┐  ┌────────────────────────────────┐   │
+│  │ Control Router   │  │  Connection Manager            │   │
+│  │ (Cascade)        │  │  (Health + Reconnect)          │   │
+│  └──────────────────┘  └────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────┐
 │                    Operating System                           │
-│                                                              │
-│  ┌─────────────┐ ┌─────────────┐ ┌──────────────────────┐  │
-│  │ Chrome      │ │  Windows    │ │   COM Automation     │  │
-│  │ DevTools    │ │  UI         │ │   (Office)           │  │
-│  │ Protocol    │ │  Automation │ │                      │  │
-│  └─────────────┘ └─────────────┘ └──────────────────────┘  │
-│  ┌─────────────┐ ┌─────────────┐                            │
-│  │ PowerShell  │ │  WMI        │                            │
-│  │ (Scripts)   │ │  (Process)  │                            │
-│  └─────────────┘ └─────────────┘                            │
+│  CDP │ Windows UI Automation │ COM Automation │ PowerShell   │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
+## Smart Function Discovery Pipeline
+
+This is the core of UAB. Five phases that transform a running desktop into a controllable interface:
+
+### Phase 1: SCAN — "What's running?"
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Phase 1: SCAN                             │
+│                                                             │
+│  Step 1: WMI Process Enumeration                            │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ PowerShell: Get-CimInstance Win32_Process              │  │
+│  │ Returns: PID, Name, ExecutablePath, CommandLine        │  │
+│  │ Single call for ALL processes (not per-process)        │  │
+│  └───────────────────────────────────────────────────────┘  │
+│          │                                                   │
+│          ▼                                                   │
+│  Step 2: System Process Filter                              │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ Skip 40+ known system processes:                      │  │
+│  │ svchost, csrss, dwm, conhost, audiodg, etc.           │  │
+│  │ Only keep user-facing applications                    │  │
+│  └───────────────────────────────────────────────────────┘  │
+│          │                                                   │
+│          ▼                                                   │
+│  Step 3: Batch DLL Module Scan                              │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ PowerShell: Get-Process → Modules                     │  │
+│  │ Batches of 50 PIDs per call (avoids PS limits)        │  │
+│  │ Returns: PID → [loaded DLL names]                     │  │
+│  │ This is how frameworks are identified!                 │  │
+│  └───────────────────────────────────────────────────────┘  │
+│          │                                                   │
+│          ▼                                                   │
+│  Step 4: Batch Window Title Scan                            │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ P/Invoke: EnumWindows + GetWindowText                 │  │
+│  │ C# compiled inline in PowerShell                      │  │
+│  │ Single call for ALL visible windows                   │  │
+│  │ Returns: PID → window title                           │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                             │
+│  Result: ProcessInfo[] with pid, name, path, modules, title │
+│  Typical: 150+ processes → 79+ controllable apps            │
+│  Time: 2-5 seconds for full scan                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key design decision:** All three scans are **batched**. A naive approach would call PowerShell once per process (150+ calls, ~30 seconds). UAB batches everything into 3-5 PowerShell calls total.
+
+### Phase 2: IDENTIFY — "What framework is each app?"
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Phase 2: IDENTIFY                         │
+│                                                             │
+│  For each candidate process:                                │
+│                                                             │
+│  Step 1: Fast-Path Detection (by executable name)           │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ chrome.exe → 'browser'                                │  │
+│  │ msedge.exe → 'browser'                                │  │
+│  │ winword.exe → 'office'                                │  │
+│  │ excel.exe → 'office'                                  │  │
+│  │ Confidence: 0.95 (these are guaranteed matches)        │  │
+│  └───────────────────────────────────────────────────────┘  │
+│          │ not matched                                       │
+│          ▼                                                   │
+│  Step 2: Framework Signature Matching                       │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ For each of 10 framework signatures:                  │  │
+│  │                                                       │  │
+│  │   Score = 0                                           │  │
+│  │   + 0.3 per command-line pattern match                │  │
+│  │   + 0.4 per process name match                        │  │
+│  │   + 0.5 per loaded DLL module match  ← highest signal │  │
+│  │   + 0.4 per file pattern match                        │  │
+│  │                                                       │  │
+│  │   confidence = min(baseConfidence + score × 0.1, 1.0) │  │
+│  │                                                       │  │
+│  │   First signature with matches > 0 wins               │  │
+│  └───────────────────────────────────────────────────────┘  │
+│          │ no signature matched                              │
+│          ▼                                                   │
+│  Step 3: Unknown Framework (has window title)               │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ Framework: 'unknown', confidence: 0.5                 │  │
+│  │ Still controllable via Win-UIA universal fallback!     │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                             │
+│  Result: DetectedApp[] with framework + confidence          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**The 10 built-in signatures:**
+
+| Framework | Key DLL Modules | Base Confidence |
+|-----------|----------------|-----------------|
+| Electron | `electron.exe`, `libcef.dll`, `chrome_elf.dll`, `v8.dll` | 0.9 |
+| Qt6 | `qt6core.dll`, `qt6gui.dll`, `qt6widgets.dll` | 0.85 |
+| Qt5 | `qt5core.dll`, `qt5gui.dll`, `qt5widgets.dll` | 0.85 |
+| GTK4 | `libgtk-4-1.dll`, `libgtk-4.dll` | 0.85 |
+| GTK3 | `libgtk-3-0.dll`, `libgtk-3.dll` | 0.85 |
+| WPF | `wpfgfx_cor3.dll`, `presentationframework.dll` | 0.85 |
+| .NET | `coreclr.dll`, `clrjit.dll`, `system.windows.forms.dll` | 0.7 |
+| Flutter | `flutter_windows.dll`, `flutter_engine.dll`, `dart.dll` | 0.85 |
+| Java | `jvm.dll`, `java.dll`, `jawt.dll` | 0.7 |
+| Office | `wwlib.dll`, `xlcall32.dll`, `olmapi32.dll` | 0.9 |
+
+### Phase 3: REGISTER — "Remember everything"
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Phase 3: REGISTER                         │
+│                                                             │
+│  Every DetectedApp becomes an AppProfile in the registry:   │
+│                                                             │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  In-Memory Maps (O(1) lookups)                        │  │
+│  │                                                       │  │
+│  │  apps: Map<executable, AppProfile>                    │  │
+│  │    "code.exe"    → { name: "VS Code", framework: ... }│  │
+│  │    "excel.exe"   → { name: "EXCEL", framework: ... }  │  │
+│  │    "notepad.exe" → { name: "notepad", framework: ... }│  │
+│  │                                                       │  │
+│  │  pidIndex: Map<pid, executable>                       │  │
+│  │    12345 → "code.exe"                                 │  │
+│  │    5678  → "excel.exe"                                │  │
+│  │    9999  → "notepad.exe"                              │  │
+│  └───────────────────────────────────────────────────────┘  │
+│          │                                                   │
+│          ▼                                                   │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  JSON Persistence (cross-session survival)            │  │
+│  │                                                       │  │
+│  │  data/uab-profiles/registry.json                      │  │
+│  │  {                                                    │  │
+│  │    "version": 1,                                      │  │
+│  │    "lastScan": 1709500000000,                         │  │
+│  │    "appCount": 79,                                    │  │
+│  │    "apps": {                                          │  │
+│  │      "code.exe": { ... full profile ... },            │  │
+│  │      "excel.exe": { ... full profile ... }            │  │
+│  │    }                                                  │  │
+│  │  }                                                    │  │
+│  │                                                       │  │
+│  │  Single file, readable diffs, git-friendly            │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                             │
+│  Auto-save: Every mutation triggers save (configurable)     │
+│  Bulk operations: Batch register defers save to end          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Why dual-indexed Maps?**
+
+- Agents often know the PID (from `scan()` results) → `byPid(pid)` is O(1)
+- Agents sometimes know the name → `byName("excel")` does substring search across Map values
+- The executable name is the stable key (PIDs change on restart, names don't)
+
+### Phase 4: CONNECT — "Best method, automatically"
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Phase 4: CONNECT                          │
+│                                                             │
+│  uab.connect("excel")                                       │
+│          │                                                   │
+│          ▼                                                   │
+│  Step 1: Smart Lookup                                       │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ Registry hit? → Use cached AppProfile                 │  │
+│  │ Registry miss? → Live detect by name → Register       │  │
+│  └───────────────────────────────────────────────────────┘  │
+│          │                                                   │
+│          ▼                                                   │
+│  Step 2: Plugin Selection (cascade)                         │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ PluginManager.findPlugin(app)                         │  │
+│  │ Tries plugins in priority order:                      │  │
+│  │   1. ChromeExtPlugin.canHandle()? → WebSocket         │  │
+│  │   2. BrowserPlugin.canHandle()?   → CDP               │  │
+│  │   3. ElectronPlugin.canHandle()?  → CDP               │  │
+│  │   4. OfficePlugin.canHandle()?    → COM+UIA           │  │
+│  │   5. QtPlugin.canHandle()?        → UIA               │  │
+│  │   6-8. GTK, Java, Flutter         → UIA               │  │
+│  │   9. WinUIAPlugin.canHandle()?    → UIA (always true) │  │
+│  └───────────────────────────────────────────────────────┘  │
+│          │                                                   │
+│          ▼                                                   │
+│  Step 3: Connection with Retry                              │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ withRetry(() => router.connect(app), { maxRetries: 1 })│  │
+│  │                                                       │  │
+│  │ If best plugin fails → RoutedConnection wraps with    │  │
+│  │ automatic fallback to next method in cascade          │  │
+│  └───────────────────────────────────────────────────────┘  │
+│          │                                                   │
+│          ▼                                                   │
+│  Step 4: Track Connection                                   │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ ConnectionManager tracks: health, uptime, failures    │  │
+│  │ ElementCache: ready for enumerate/query calls         │  │
+│  │ PermissionManager: ready for action gating            │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                             │
+│  Returns: { pid, name, framework, method, elementCount }    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Phase 5: LEARN — "Remember what works"
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Phase 5: LEARN                            │
+│                                                             │
+│  After successful connection:                               │
+│                                                             │
+│  registry.update('excel.exe', {                             │
+│    preferredMethod: 'com+uia',  // This method worked!     │
+│    pid: 5678,                   // Update last known PID    │
+│    lastSeen: Date.now()         // Update timestamp         │
+│  });                                                        │
+│                                                             │
+│  After successful action:                                   │
+│                                                             │
+│  cache.invalidateIfNeeded(pid, 'click');                    │
+│  // 'click' is mutating → clear cached tree + queries       │
+│  // Next query will fetch fresh data                        │
+│                                                             │
+│  After connection failure:                                  │
+│                                                             │
+│  connectionManager detects unhealthy → auto-reconnect       │
+│  Router tries fallback method → learns new preferred method │
+│                                                             │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  Learning Loop                                        │  │
+│  │                                                       │  │
+│  │  scan() → register → connect → learn → persist        │  │
+│  │     ↑                                      │          │  │
+│  │     └──────────────────────────────────────┘          │  │
+│  │  Next session: load() → find() → instant connect      │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**What UAB learns and remembers:**
+
+| Knowledge | Where Stored | Survives Restart? |
+|-----------|-------------|-------------------|
+| App exists | AppRegistry Map | Yes (JSON file) |
+| Framework type | AppProfile.framework | Yes |
+| Best control method | AppProfile.preferredMethod | Yes |
+| Last PID | AppProfile.pid | Yes (may be stale) |
+| Window title | AppProfile.windowTitle | Yes |
+| UI tree structure | ElementCache | No (rebuilt per session) |
+| Connection health | ConnectionManager | No (rebuilt per session) |
+| Action history | PermissionManager audit | No (in-memory) |
+
+---
+
+## The App Registry (UAB's Brain)
+
+The registry is the central knowledge store. It's what makes UAB "smart" — instead of scanning the system every time, it remembers what it's learned.
+
+### Data Model
+
+```typescript
+interface AppProfile {
+  executable: string;       // Stable key: "code.exe" (lowercase, immutable)
+  name: string;             // Human-readable: "Visual Studio Code"
+  pid?: number;             // Last known PID (may be stale after restart)
+  framework: FrameworkType; // Detected: "electron"
+  confidence: number;       // 0.0-1.0 confidence score
+  preferredMethod?: string; // Learned: "cdp" (from successful connection)
+  connectionInfo?: object;  // Framework-specific: { debugPort: 9222 }
+  path?: string;            // Full path: "C:\\...\\Code.exe"
+  windowTitle?: string;     // Last seen: "project - Visual Studio Code"
+  lastSeen: number;         // Unix timestamp of last detection
+  tags?: string[];          // User-defined: ["dev-tools", "editor"]
+}
+```
+
+### Lookup Performance
+
+| Operation | Method | Time |
+|-----------|--------|------|
+| Lookup by PID | `byPid(pid)` → pidIndex Map → apps Map | O(1) |
+| Lookup by name | `byName(name)` → iterate + substring match | O(n) but n ≈ 79 |
+| Lookup by executable | `byExecutable(exe)` → apps Map | O(1) |
+| Lookup by framework | `byFramework(type)` → iterate + filter | O(n) |
+| Get all | `all()` → Map.values() | O(1) |
+
+### Persistence Flow
+
+```
+Mutation (register/update/remove)
+         │
+         ▼
+    Set dirty = true
+         │
+         ▼
+    autoSave enabled?
+    ┌────┴────┐
+    │   Yes   │──▶ save() → JSON.stringify → writeFileSync
+    └────┬────┘
+    │    No   │──▶ Deferred (caller must save() manually)
+    └─────────┘
+```
+
+For bulk operations (`registerAll`), auto-save is temporarily disabled to avoid 79 file writes. One save at the end.
+
+---
+
 ## The Cascade Pattern
 
-The core insight: different apps expose different levels of automation. UAB doesn't force a single method. Instead, it **cascades** through control methods from highest-fidelity to most-universal:
+The cascade is how UAB picks the best control method for each app. It's not just "try until something works" — it's an ordered priority list optimized for speed and fidelity.
+
+### Priority Order
 
 ```
-Priority 1: Direct API (MCP server, REST endpoint — future)
-     │ fail
-     ▼
-Priority 2: Framework Hook (CDP for Electron, COM for Office)
-     │ fail
-     ▼
-Priority 3: Windows UI Automation (universal, any windowed app)
-     │ fail
-     ▼
-Priority 4: Vision + Input Injection (screenshot → coordinates — future)
+Priority 1: Chrome Extension Bridge
+   │   WebSocket to installed extension. No browser relaunch.
+   │   Coverage: Any Chromium browser (Chrome, Edge, Brave)
+   │   fail
+   ▼
+Priority 2: CDP Browser Plugin
+   │   Direct CDP WebSocket. Requires --remote-debugging-port.
+   │   Coverage: Chromium browsers launched with debug flag
+   │   fail
+   ▼
+Priority 3: Framework-Specific Plugin
+   │   Electron CDP, Office COM, etc.
+   │   Coverage: Apps matching the plugin's framework
+   │   fail
+   ▼
+Priority 4: Windows UI Automation
+   │   Universal fallback. Works with ANY windowed Windows app.
+   │   Coverage: Everything
+   │   (always succeeds for windowed apps)
 ```
 
-### Why This Matters
+### Why This Order?
 
-| Method | Speed | Fidelity | Coverage |
-|--------|-------|----------|----------|
-| Direct API | Fastest | Perfect | App-specific |
-| Framework Hook | Fast | High | Framework-specific |
-| UI Automation | Moderate | Good | Any Windows app |
-| Vision | Slow | Variable | Anything with pixels |
+| Method | Speed | Fidelity | Coverage | Disruption |
+|--------|-------|----------|----------|------------|
+| Chrome Extension | Fastest | Perfect | Chromium only | None (already installed) |
+| CDP (browser) | Fast | High | Chromium only | Requires debug flag |
+| Framework Hook | Fast | High | Framework-specific | Sometimes requires app relaunch |
+| Win-UIA | Moderate | Good | Universal | None |
 
-UAB picks the best available method automatically. If a framework plugin fails mid-session, the router falls back to the next method transparently — the agent never sees the switch.
-
-### Fallback in Practice
+### Automatic Fallback
 
 ```
 Agent: uab.act(pid, 'btn-1', 'click')
                 │
                 ▼
-        Router checks current route
+        RoutedConnection
                 │
         ┌───────┴───────┐
         │  Electron CDP  │ ──▶ WebSocket error!
@@ -125,111 +451,102 @@ Agent: uab.act(pid, 'btn-1', 'click')
         (never knew about the fallback)
 ```
 
+The `RoutedConnection` class wraps any `PluginConnection` and catches failures, transparently falling back to the next available method.
+
 ---
 
-## Framework Detection
+## Framework Detection Engine
 
-Detection is the first step. UAB scans running processes to identify what frameworks they use.
-
-### Detection Pipeline
+### Architecture
 
 ```
-WMI Process Enumeration
-         │
-         ▼
-┌─────────────────────────┐
-│  Filter System Processes │  (svchost, csrss, dwm, etc. — 40+ excluded)
-└────────────┬────────────┘
-             ▼
-┌─────────────────────────┐
-│  Batch DLL Module Scan   │  (PowerShell: Get-Process → Modules)
-└────────────┬────────────┘
-             ▼
-┌─────────────────────────┐
-│  Batch Window Title Scan │  (EnumWindows API via PowerShell)
-└────────────┬────────────┘
-             ▼
-┌─────────────────────────┐
-│  Framework Signature     │
-│  Matching                │
-│                         │
-│  electron.exe → Electron│
-│  xlcall32.dll → Office  │
-│  qt6core.dll  → Qt6     │
-│  jvm.dll      → Java    │
-│  flutter_*.dll→ Flutter  │
-└────────────┬────────────┘
-             ▼
-   DetectedApp[] with confidence scores
+FrameworkDetector
+├── detectAll()      ─── Full system scan (batched)
+├── detectElectron() ─── Electron-only scan (faster)
+├── detectByPid()    ─── Single PID check
+├── findByName()     ─── Name-based search (uses detectAll)
+└── cache            ─── Map<pid, DetectedApp>
 ```
 
-### Signature Matching
+### Batching Strategy
 
-Each framework has a signature definition:
+The key performance insight: PowerShell process startup is expensive (~200ms). Module scanning per-process would be (150 processes × 200ms = 30 seconds). UAB batches:
 
-```typescript
-{
-  framework: 'electron',
-  modules: ['electron.exe', 'libcef.dll', 'chrome_elf.dll'],
-  filePatterns: ['resources/app.asar'],
-  commandLine: ['--type=renderer'],
-  baseConfidence: 0.9
+```
+Instead of:                          UAB does:
+┌────────────────────┐              ┌────────────────────┐
+│ PS: Get-Process -1 │ ×150         │ PS: Get-CimInstance│ ×1
+│ PS: Get-Process -2 │              │    (all processes)  │
+│ PS: Get-Process -3 │              ├────────────────────┤
+│ ...                │              │ PS: Get-Process    │ ×3
+│ PS: Get-Process -150│              │    -Id @(1,2,...50) │  (batches of 50)
+├────────────────────┤              ├────────────────────┤
+│ ~30 seconds        │              │ PS: EnumWindows    │ ×1
+└────────────────────┘              │    (all titles)    │
+                                    ├────────────────────┤
+                                    │ ~2-5 seconds       │
+                                    └────────────────────┘
+```
+
+### Window Title Scanning
+
+UAB compiles a small C# class inline in PowerShell to call Win32 APIs:
+
+```csharp
+// Compiled at runtime via Add-Type
+public class WinEnum {
+  [DllImport("user32.dll")] static extern bool EnumWindows(...);
+  [DllImport("user32.dll")] static extern int GetWindowText(...);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(...);
+
+  public static Dictionary<uint, string> GetWindowTitles() {
+    // One call enumerates ALL visible windows → returns PID → title map
+  }
 }
 ```
 
-Confidence accumulates: base score + module matches + command-line matches + file pattern matches. The detector returns apps sorted by confidence.
-
-### Performance
-
-The detector batches PowerShell calls to minimize process spawn overhead:
-- **One** call for all process info (WMI)
-- **One** call for all module scanning
-- **One** call for all window titles
-
-Typical scan time: **2-5 seconds** for a full desktop.
+This is faster than calling `GetWindowTitle()` per PID because it only iterates visible windows (typically 20-30) instead of all processes (150+).
 
 ---
 
 ## Control Router
 
-The router maps detected apps to control methods and manages fallback.
+The router maps detected apps to control methods and manages the connection lifecycle.
 
-### Route Selection
+### Route Structure
 
 ```typescript
-// Router internals (simplified)
-async connect(app: DetectedApp): Promise<RoutedConnection> {
-  // 1. Try framework-specific plugin
-  const plugin = this.pluginManager.findPlugin(app);
-  if (plugin) {
-    try {
-      const conn = await plugin.connect(app);
-      return new RoutedConnection(conn, this, app);
-    } catch (e) {
-      // Plugin failed, fall through
-    }
-  }
-
-  // 2. Try Win-UIA universal fallback
-  const uia = this.pluginManager.getPlugin('win-uia');
-  if (uia) {
-    const conn = await uia.connect(app);
-    return new RoutedConnection(conn, this, app);
-  }
-
-  throw new Error(`No control method available for ${app.name}`);
+interface ControlRoute {
+  app: DetectedApp;           // The detected app
+  method: ControlMethod;      // 'direct-api' | 'uab-hook' | 'accessibility' | 'vision'
+  connection: PluginConnection; // Active connection
+  fallbacks: ControlMethod[];   // Remaining fallback methods
 }
 ```
 
-### RoutedConnection
+### Connection Flow
 
-The `RoutedConnection` wraps any `PluginConnection` and adds automatic fallback:
+```typescript
+// Router.connect() simplified
+async connect(app: DetectedApp): Promise<RoutedConnection> {
+  // 1. Find best plugin for this app's framework
+  const plugin = this.pluginManager.findPlugin(app);
 
-```
-RoutedConnection
-  ├── wraps: PluginConnection (e.g., ElectronPlugin)
-  ├── fallback(): tries next method in cascade
-  └── every method call: try current → catch → fallback → retry
+  if (plugin) {
+    try {
+      // 2. Try framework-specific connection
+      const conn = await plugin.connect(app);
+      return new RoutedConnection(conn, this, app);
+    } catch {
+      // 3. Framework plugin failed — fall through to UIA
+    }
+  }
+
+  // 4. Universal fallback: Win-UIA works for any windowed app
+  const uia = this.pluginManager.getPlugin('win-uia');
+  const conn = await uia.connect(app);
+  return new RoutedConnection(conn, this, app);
+}
 ```
 
 ---
@@ -238,126 +555,149 @@ RoutedConnection
 
 ### Plugin Interface
 
-Every plugin implements:
+Every framework plugin implements two interfaces:
 
 ```typescript
 interface FrameworkPlugin {
-  readonly framework: FrameworkType;
-  readonly name: string;
-  canHandle(app: DetectedApp): boolean;
-  connect(app: DetectedApp): Promise<PluginConnection>;
+  readonly framework: FrameworkType;  // What framework this handles
+  readonly name: string;              // Human-readable name
+  canHandle(app: DetectedApp): boolean;       // Can this plugin control this app?
+  connect(app: DetectedApp): Promise<PluginConnection>;  // Establish connection
 }
-```
 
-And every connection implements:
-
-```typescript
 interface PluginConnection {
-  enumerate(): Promise<UIElement[]>;
-  query(selector: ElementSelector): Promise<UIElement[]>;
-  act(elementId: string, action: ActionType, params?: ActionParams): Promise<ActionResult>;
-  state(): Promise<AppState>;
-  disconnect(): Promise<void>;
-  connected: boolean;
+  enumerate(): Promise<UIElement[]>;          // Get UI tree
+  query(selector: ElementSelector): Promise<UIElement[]>;  // Search elements
+  act(elementId, action, params?): Promise<ActionResult>;  // Perform action
+  state(): Promise<AppState>;                // Get app state
+  disconnect(): Promise<void>;               // Clean up
+  connected: boolean;                        // Connection status
 }
 ```
 
-### Plugin Registration Order
+### Registration Order
 
-Plugins are registered in priority order. The plugin manager tries each one until `canHandle()` returns true:
+Plugins are registered in the `UABConnector.start()` method in strict priority order:
 
 ```
 1. ChromeExtPlugin   — Chrome extension bridge (WebSocket, no relaunch)
 2. BrowserPlugin     — Browser CDP (needs --remote-debugging-port)
-3. ElectronPlugin    — Electron CDP
-4. OfficePlugin      — COM + UIA hybrid
-5. QtPlugin          — Qt via UIA
-6. GtkPlugin         — GTK via UIA
-7. JavaPlugin        — Java via JAB→UIA
-8. FlutterPlugin     — Flutter via UIA
-9. WinUIAPlugin      — Universal fallback (any Windows app)
+3. ElectronPlugin    — Electron CDP (framework hook)
+4. OfficePlugin      — COM + UIA hybrid (Word, Excel, PPT, Outlook)
+5. QtPlugin          — Qt via UIA bridge
+6. GtkPlugin         — GTK via UIA bridge
+7. JavaPlugin        — Java via JAB→UIA bridge
+8. FlutterPlugin     — Flutter via UIA bridge
+9. WinUIAPlugin      — Universal fallback (ALWAYS returns canHandle=true)
 ```
 
-### How Each Plugin Works
+### Plugin Details
 
 #### Electron Plugin (CDP)
 ```
-ElectronPlugin
+Input: DetectedApp { framework: 'electron', connectionInfo: { debugPort: 9222 } }
   │
-  ├── Detect: Look for --remote-debugging-port in cmdline
-  ├── Connect: WebSocket to CDP endpoint
-  ├── Enumerate: CDP Runtime.evaluate → DOM traversal → UIElement tree
-  ├── Query: CSS selector matching on DOM
-  ├── Act: CDP Input.dispatchMouseEvent / DOM.focus / etc.
-  └── Disconnect: Close WebSocket
+  ├── Find CDP endpoint: HTTP GET http://localhost:{port}/json/version
+  ├── Connect: WebSocket to devtoolsFrontendUrl
+  ├── Enumerate: Runtime.evaluate → document.querySelectorAll('*') → map to UIElement[]
+  ├── Query: CSS selector matching via CDP
+  ├── Act: Input.dispatchMouseEvent / Runtime.evaluate
+  └── ~500 LOC of CDP protocol handling
 ```
 
 #### Office Plugin (COM + UIA Hybrid)
 ```
-OfficePlugin
+Input: DetectedApp { framework: 'office', name: 'EXCEL' }
   │
-  ├── Detect: Match WINWORD.EXE, EXCEL.EXE, POWERPNT.EXE, OUTLOOK.EXE
-  ├── Connect: Initialize both UIA session AND COM automation object
-  ├── Enumerate: UIA for UI tree, COM for document content
-  ├── Query: UIA for buttons/menus, COM for cells/ranges/slides
+  ├── Connect: PowerShell creates COM object + UIA automation element
+  ├── Enumerate: UIA for UI tree (buttons, menus, ribbons)
+  ├── Query: UIA PropertyCondition for UI elements
   ├── Act:
-  │   ├── UI actions (click, type) → UIA
-  │   ├── readCell, writeCell, readRange → COM (Excel)
+  │   ├── UI actions (click, type) → UIA InvokePattern / ValuePattern
+  │   ├── readCell / writeCell → COM Excel.Application.ActiveSheet.Range
+  │   ├── readRange / writeRange → COM bulk read/write
+  │   ├── getSheets / readFormula → COM workbook properties
   │   ├── readDocument → UIA TextPattern (Word)
-  │   ├── readSlides → COM (PowerPoint)
-  │   └── composeEmail, sendEmail → COM (Outlook)
-  └── Disconnect: Release COM objects, close UIA session
+  │   ├── readSlides → COM PowerPoint.Application.Presentations
+  │   └── composeEmail / sendEmail → COM Outlook.Application.CreateItem
+  └── Hybrid approach: best of both COM (data) and UIA (interaction)
 ```
 
 #### Win-UIA Plugin (Universal Fallback)
 ```
-WinUIAPlugin
+Input: DetectedApp { any framework or 'unknown' }
   │
-  ├── Detect: canHandle() returns true for ANY Windows app
-  ├── Connect: Start PowerShell interactive session
-  ├── Enumerate: AutomationElement.FindAll() via PowerShell
-  ├── Query: Condition-based search (PropertyCondition, AndCondition)
+  ├── canHandle() → ALWAYS true (this is the catch-all)
+  ├── Connect: PowerShell interactive session with Add-Type UIA
+  ├── Enumerate: AutomationElement.FindAll(TreeScope.Subtree)
+  │   → PowerShell maps UIA ControlType to UAB ElementType
+  │   → Builds recursive tree with children
+  ├── Query: PropertyCondition / AndCondition / OrCondition matching
   ├── Act:
-  │   ├── InvokePattern → click/invoke
-  │   ├── ValuePattern → type/clear
-  │   ├── TogglePattern → check/uncheck/toggle
-  │   ├── ExpandCollapsePattern → expand/collapse
+  │   ├── InvokePattern → click / invoke
+  │   ├── ValuePattern → type / clear / read value
+  │   ├── TogglePattern → check / uncheck / toggle
+  │   ├── ExpandCollapsePattern → expand / collapse
   │   ├── SelectionItemPattern → select
-  │   ├── ScrollItemPattern → scroll
-  │   └── SendKeys API → keypress/hotkey
-  └── Disconnect: Close PowerShell session
+  │   ├── ScrollItemPattern → scroll into view
+  │   ├── WindowPattern → minimize / maximize / restore / close
+  │   ├── TransformPattern → move / resize
+  │   ├── TextPattern → read document text
+  │   ├── GridPattern → read table cells
+  │   ├── SendKeys → keypress / hotkey
+  │   └── Screenshot → BitBlt screen capture to file
+  └── ~1500 LOC — the most comprehensive plugin
 ```
 
 ---
 
-## Data Flow
+## UABConnector vs UABService
 
-### Discovery → Connection → Control (Full Path)
+UAB provides two API layers:
+
+| Feature | UABConnector | UABService |
+|---------|-------------|------------|
+| **Instantiation** | `new UABConnector()` | `import { uab }` (singleton) |
+| **Multiple instances** | Yes — each gets own state | No — one per process |
+| **Dependencies** | Zero (no Grammy, no SQLite) | May reference host integrations |
+| **Registry** | Own AppRegistry + JSON file | Shared via connector |
+| **Use case** | Any agent framework, CLI, library | Single-consumer apps |
+| **Primary API** | `scan()`, `find()`, `connect()` | `detect()`, `connectByName()` |
+
+**Rule of thumb:**
+- Building an agent? Use `UABConnector` — it's framework-independent
+- Building a Telegram bot or single-purpose tool? Use `UABService` — simpler
+
+---
+
+## Data Flow: End-to-End
+
+### Complete flow: "Click the Submit button in Excel"
 
 ```
-    Agent Request: "Click the Submit button in Excel"
+    Agent: "Click Submit in Excel"
                           │
                           ▼
               ┌───────────────────┐
-              │   UAB Service     │
-              │   detect()        │
+              │   UABConnector    │
+              │   find("excel")   │
+              └────────┬──────────┘
+                       │
+              ┌────────┴──────────┐
+              │   App Registry    │──▶ Hit! AppProfile for "excel.exe"
+              │   byName("excel") │    framework: 'office', pid: 5678
               └────────┬──────────┘
                        │
                        ▼
               ┌───────────────────┐
-              │   Detector        │  PowerShell WMI scan
-              │   detectAll()     │  DLL module matching
-              │                   │  Window title fetching
+              │   UABConnector    │
+              │   connect(5678)   │
               └────────┬──────────┘
                        │
-                       ▼
-              DetectedApp { pid: 5678, name: 'EXCEL', framework: 'office' }
-                       │
-                       ▼
-              ┌───────────────────┐
-              │   Router          │
-              │   connect()       │
-              └────────┬──────────┘
+              ┌────────┴────────────┐
+              │   Control Router    │
+              │   connect(app)      │
+              └────────┬────────────┘
                        │
               ┌────────┴────────┐
               │ PluginManager   │
@@ -371,24 +711,25 @@ WinUIAPlugin
               │                   │──▶ UIA: AutomationElement.FromHandle()
               └────────┬──────────┘
                        │
-                       ▼
-              RoutedConnection (wrapping OfficePlugin connection)
+              ┌────────┴────────────┐
+              │  Registry Learning  │──▶ Update preferredMethod: 'com+uia'
+              └────────┬────────────┘
                        │
                        ▼
               ┌───────────────────┐
-              │   UAB Service     │
+              │   UABConnector    │
               │   query(5678,     │
               │     {type:'button',│
               │      label:'Submit'})
               └────────┬──────────┘
                        │
               ┌────────┴────────┐
-              │   Cache Check   │──▶ Miss (first query)
+              │   Cache Check   │──▶ Miss → fetch from connection
               └────────┬────────┘
                        │
                        ▼
               ┌───────────────────┐
-              │  Connection       │
+              │  OfficePlugin     │
               │  query()          │──▶ UIA PropertyCondition match
               └────────┬──────────┘
                        │
@@ -401,7 +742,7 @@ WinUIAPlugin
                        │
                        ▼
               ┌───────────────────┐
-              │   UAB Service     │
+              │   UABConnector    │
               │   act(5678,       │
               │     'btn-submit', │
               │     'click')      │
@@ -409,16 +750,16 @@ WinUIAPlugin
                        │
               ┌────────┴────────────┐
               │  Permission Check   │──▶ Risk: safe → Allowed
-              │  record() to audit  │
+              │  record() to audit  │──▶ Audit: { pid, action, element, risk }
               └────────┬────────────┘
                        │
               ┌────────┴────────┐
-              │   withRetry()   │──▶ Attempt 1
+              │   withRetry()   │──▶ Attempt 1 (maxRetries: 1)
               └────────┬────────┘
                        │
                        ▼
               ┌───────────────────┐
-              │  Connection       │
+              │  OfficePlugin     │
               │  act('click')     │──▶ UIA InvokePattern.Invoke()
               └────────┬──────────┘
                        │
@@ -430,48 +771,11 @@ WinUIAPlugin
               ActionResult { success: true }
 ```
 
-### Health Check Cycle
-
-```
-Every 30 seconds:
-  ┌────────────────────────────────┐
-  │  ConnectionManager             │
-  │  runHealthChecks()             │
-  └──────────┬─────────────────────┘
-             │
-             ▼
-  For each tracked connection:
-    ┌────────────────────┐
-    │ connection.state() │──▶ 5s timeout
-    └────────┬───────────┘
-             │
-        ┌────┴────┐
-        │ Success │──▶ Reset failure counter, update lastHealthy
-        └─────────┘
-        ┌────┴────┐
-        │ Failure │──▶ Increment failure counter
-        └────┬────┘
-             │
-        failures >= 3?
-             │
-        ┌────┴────┐
-        │   Yes   │──▶ Attempt reconnect (exponential backoff)
-        └────┬────┘
-             │
-        reconnect failed 3 times?
-             │
-        ┌────┴────┐
-        │   Yes   │──▶ Mark stale → remove after 5 min
-        └─────────┘
-```
-
 ---
 
 ## Production Hardening
 
-### Smart Cache
-
-Three-tier cache with intelligent invalidation:
+### Smart Three-Tier Cache
 
 ```
 ┌──────────────────────────────────────────┐
@@ -483,7 +787,7 @@ Three-tier cache with intelligent invalidation:
 │                                          │
 │  Invalidation Triggers:                  │
 │  click, type, keypress, navigate,        │
-│  setCookie, toggle, expand...            │
+│  setCookie, toggle, expand, hotkey...    │
 │                                          │
 │  Safe (no invalidation):                 │
 │  focus, hover, scroll, screenshot,       │
@@ -498,7 +802,7 @@ Action Received
       │
       ▼
 ┌─────────────────┐
-│ Rate Limit Check │──▶ 100 actions / 60s per PID
+│ Rate Limit Check │──▶ 100 actions / 60s per PID (sliding window)
 └────────┬────────┘
          │ pass
          ▼
@@ -518,7 +822,7 @@ Action Received
 └─────────────────┘
 ```
 
-### Retry with Backoff
+### Retry with Exponential Backoff
 
 ```
 Operation
@@ -535,19 +839,38 @@ Wait: baseDelay × 2^attempt + jitter (0-30%)
 Attempt 2 ──▶ Success? → Return
   │ fail
   ▼
-Wait: longer delay
-  │
-Attempt 3 ──▶ Success? → Return
-  │ fail
-  ▼
 Throw (max retries exhausted)
+```
+
+### Connection Health Monitoring
+
+```
+Every 30 seconds:
+  ┌────────────────────────────────┐
+  │  ConnectionManager             │
+  │  runHealthChecks()             │
+  └──────────┬─────────────────────┘
+             │
+  For each tracked connection:
+    connection.state() ──▶ 5s timeout
+             │
+        ┌────┴────┐
+        │ Success │──▶ Reset failures, update lastHealthy
+        └─────────┘
+        ┌────┴────┐
+        │ Failure │──▶ Increment failures
+        └────┬────┘
+             │
+        failures >= 3? → Attempt reconnect (exponential backoff)
+             │
+        reconnect failed 3x? → Mark stale → remove after 5 min
 ```
 
 ---
 
 ## Session Bridge
 
-UAB needs to interact with desktop windows, but agents often run in **Session 0** (non-interactive — SSH, Windows Services, Task Scheduler). Desktop windows live in **Session 1+**.
+UAB works even when running in Session 0 (SSH, Windows Services, Task Scheduler).
 
 ### The Problem
 
@@ -575,14 +898,16 @@ Session 0                        Session 1
 └──────────────────┘            └──────────────────┘
 ```
 
-`ps-exec.ts` detects Session 0 automatically and routes PowerShell execution through the Task Scheduler bridge, making UAB work transparently regardless of how the agent process was launched.
+`ps-exec.ts` detects Session 0 automatically and routes through the Task Scheduler bridge. The rest of UAB never knows the difference.
 
 ---
 
 ## Key Design Decisions
 
 See [docs/design-decisions.md](docs/design-decisions.md) for the full rationale behind:
-- Why cascade instead of single-method
 - Why DLL scanning instead of window class matching
-- Why PowerShell for UIA instead of native bindings
-- Why stateless CLI + stateful service (not one or the other)
+- Why dual-indexed Maps instead of SQLite
+- Why JSON profiles instead of a database
+- Why PowerShell instead of native Node.js bindings
+- Why the plugin cascade instead of capability negotiation
+- Why the connector pattern for framework independence

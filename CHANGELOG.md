@@ -6,20 +6,34 @@ All notable changes to Universal App Bridge will be documented in this file.
 
 ### Added
 
-- **UABConnector** — Framework-independent connector class that any agent/application can instantiate directly. No singleton required.
-- **AppRegistry** — In-memory app registry with JSON file persistence (`data/uab-profiles/registry.json`). Remembers detected apps, frameworks, and connection info across sessions.
-- **Comprehensive documentation suite:**
-  - `ARCHITECTURE.md` — Deep dive into cascade routing, plugin system, data flow diagrams, Session 0→1 bridging
-  - `API_REFERENCE.md` — Complete reference for every public class, method, parameter, and return type
-  - `GETTING_STARTED.md` — Step-by-step install → configure → first interaction walkthrough
-  - `SUPPORTED_APPLICATIONS.md` — Tested apps with verified operations and performance benchmarks
-  - `SECURITY.md` — Threat model, trust boundaries, credential handling, governance integration
-  - `CONTRIBUTING.md` — Development workflow, code style, plugin authoring guide, PR guidelines
-- Connector export path: `import { UABConnector } from 'universal-app-bridge/connector'`
+- **Smart Function Discovery Pipeline** — Five-phase process: Scan → Identify → Register → Connect → Learn. The core intelligence of UAB.
+- **UABConnector** — Framework-independent connector class. Instantiable (not singleton), zero dependencies on any agent framework. Primary API for all consumers.
+  - `scan()` — Full system detection with batch DLL scanning, framework identification, and registry population
+  - `apps()` — Instant recall from registry (no scan needed)
+  - `find()` — Smart lookup: checks registry first (O(1)), falls back to live detection
+  - `inspectPid()` — Single-PID lookup with registry-first strategy
+  - `connect()` — Auto-selects best control method via plugin cascade with learning
+- **AppRegistry** — In-memory knowledge base with JSON persistence. UAB's "brain."
+  - Dual-indexed Maps: O(1) lookup by PID and by executable name
+  - Git-friendly JSON file persistence (`data/uab-profiles/registry.json`)
+  - Auto-save on mutation with deferred save for bulk operations
+  - Cross-session survival — remembers apps, frameworks, and preferred methods
+- **Learning Loop** — After successful connection, registry is updated with the method that worked. Next connection to the same app is faster.
+- **Batch Processing** — DLL module scanning batched (50 PIDs per PowerShell call). Window title scanning via single P/Invoke call. Full system scan in 2-5 seconds.
+- **CLI smart discovery commands:** `scan`, `apps`, `find`, `profiles`
+- **Comprehensive documentation** reflecting Smart Function Discovery architecture:
+  - `README.md` — Smart discovery front and center
+  - `ARCHITECTURE.md` — Full five-phase pipeline documentation with diagrams
+  - `API_REFERENCE.md` — UABConnector as primary API with AppRegistry reference
+  - `GETTING_STARTED.md` — Smart discovery walkthrough
+  - `SECURITY.md`, `CONTRIBUTING.md`, `SUPPORTED_APPLICATIONS.md`
+  - `docs/design-decisions.md` — 15 architectural decisions with rationale
+  - `docs/roadmap.md` — Updated completed phases and future plans
 
 ### Changed
 
-- Updated README with full technical documentation, architecture diagrams, and "Why UAB Matters" vision
+- UABConnector is now the primary API (UABService remains for single-consumer use)
+- Documentation completely rewritten to showcase Smart Function Discovery
 - Package version bumped to 0.7.0
 - License field updated to `BSL-1.1`
 - Source now includes 30 TypeScript files (~11,700 LOC)
