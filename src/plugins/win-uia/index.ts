@@ -373,6 +373,7 @@ Add-Type -TypeDefinition '
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint d, IntPtr e);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte sc, uint f, IntPtr e);
@@ -385,7 +386,8 @@ Add-Type -TypeDefinition '
       keybd_event(0x12, 0, 0, IntPtr.Zero);
       keybd_event(0x12, 0, 0x02, IntPtr.Zero);
       if (fgT != curT) AttachThreadInput(curT, fgT, true);
-      ShowWindow(target, 9);
+      // Only restore if minimized — preserves snap layouts and split-screen
+      if (IsIconic(target)) ShowWindow(target, 9);
       SetForegroundWindow(target);
       BringWindowToTop(target);
       if (fgT != curT) AttachThreadInput(curT, fgT, false);
@@ -581,6 +583,7 @@ Add-Type -TypeDefinition '
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int n);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint d, IntPtr e);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte sc, uint f, IntPtr e);
@@ -593,7 +596,7 @@ Add-Type -TypeDefinition '
       keybd_event(0x12, 0, 0, IntPtr.Zero);
       keybd_event(0x12, 0, 0x02, IntPtr.Zero);
       if (fgT != curT) AttachThreadInput(curT, fgT, true);
-      ShowWindow(target, 9);
+      if (IsIconic(target)) ShowWindow(target, 9);
       SetForegroundWindow(target);
       BringWindowToTop(target);
       if (fgT != curT) AttachThreadInput(curT, fgT, false);
