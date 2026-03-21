@@ -401,6 +401,45 @@ export class UABServer {
       return { pid, ...result };
     });
 
+    // Copy — select all + copy from a window, return clipboard text
+    this.routes.set('/copy', async (body, conn) => {
+      const pid = body.pid as number;
+      if (!pid) throw new Error('Missing required field: pid');
+      if (!conn.isConnected(pid)) await conn.connect(pid);
+
+      // Focus the window, Ctrl+A to select all, Ctrl+C to copy
+      await conn.act(pid, '', 'hotkey' as ActionType, { keys: ['ctrl', 'a'] });
+      await new Promise(r => setTimeout(r, 200));
+      await conn.act(pid, '', 'hotkey' as ActionType, { keys: ['ctrl', 'c'] });
+      await new Promise(r => setTimeout(r, 300));
+
+      // Read clipboard via PowerShell
+      const { execSync } = await import('child_process');
+      try {
+        const text = execSync(
+          'powershell -NoProfile -Command "Get-Clipboard"',
+          { encoding: 'utf-8', timeout: 5000, shell: 'cmd.exe' as any },
+        ).trim();
+        return { pid, success: true, text };
+      } catch (err) {
+        return { pid, success: false, error: 'Could not read clipboard', text: '' };
+      }
+    });
+
+    // Read — just read clipboard without selecting (for reading after manual copy)
+    this.routes.set('/clipboard', async () => {
+      const { execSync } = await import('child_process');
+      try {
+        const text = execSync(
+          'powershell -NoProfile -Command "Get-Clipboard"',
+          { encoding: 'utf-8', timeout: 5000, shell: 'cmd.exe' as any },
+        ).trim();
+        return { success: true, text };
+      } catch {
+        return { success: false, text: '', error: 'Could not read clipboard' };
+      }
+    });
+
     // Describe — screenshot + Vision AI to read what's on screen
     this.routes.set('/describe', async (body, conn) => {
       const pid = body.pid as number;
