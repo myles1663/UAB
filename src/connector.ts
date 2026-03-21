@@ -458,18 +458,28 @@ export class UABConnector {
     return this.act(pid, '', mapped, params);
   }
 
-  /** Capture a screenshot of the app window. */
+  /** Capture a screenshot of the app window. Returns path + base64 data. */
   async screenshot(pid: number, outputPath?: string): Promise<ActionResult> {
     this.ensureConnected(pid);
     const route = this.router.getRoute(pid)!;
     const path = outputPath || `data/screenshots/uab-${pid}-${Date.now()}.png`;
 
     // Ensure directory exists
-    const { mkdirSync } = await import('fs');
+    const { mkdirSync, readFileSync, existsSync } = await import('fs');
     const { dirname } = await import('path');
     mkdirSync(dirname(path), { recursive: true });
 
-    return route.connection.act('', 'screenshot', { outputPath: path });
+    const result = await route.connection.act('', 'screenshot', { outputPath: path });
+
+    // Always include base64 in the response so remote clients (Co-work) can read it
+    if (result.success && !result.base64 && !result.data) {
+      const filePath = (result as any).path || path;
+      if (existsSync(filePath)) {
+        (result as any).data = readFileSync(filePath).toString('base64');
+      }
+    }
+
+    return result;
   }
 
   // ─── Diagnostics ────────────────────────────────────────────────
