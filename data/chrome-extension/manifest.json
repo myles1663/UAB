@@ -24,5 +24,8 @@
     "48": "icon48.png",
     "128": "icon128.png"
   },
-  "minimum_chrome_version": "116"
+  "minimum_chrome_version": "116",
+  "externally_connectable": {
+    "matches": ["*://*.claude.ai/*", "*://*.anthropic.com/*", "*://localhost/*"]
+  }
 }

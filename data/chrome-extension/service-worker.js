@@ -99,6 +99,57 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
+// ─── UAB Relay ────────────────────────────────────────────────
+//
+// Proxies requests from Co-work (or any Chrome messaging client)
+// to UABServer at localhost:3100. The extension runs on the host
+// machine, so it can reach localhost directly.
+//
+// Co-work → chrome.runtime.sendMessage → this handler → fetch(localhost:3100) → response
+//
+
+const UAB_BASE = 'http://localhost:3100';
+
+/**
+ * Relay a request to UABServer.
+ * @param {string} endpoint - e.g., "/scan", "/connect", "/find"
+ * @param {object} body - JSON body to POST
+ * @param {string} [apiKey] - Optional API key
+ * @returns {Promise<object>} JSON response from UABServer
+ */
+async function relayToUAB(endpoint, body = {}, apiKey) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) headers['X-API-Key'] = apiKey;
+
+  const method = endpoint === '/health' ? 'GET' : 'POST';
+  const opts = { method, headers };
+  if (method === 'POST') opts.body = JSON.stringify(body);
+
+  const resp = await fetch(`${UAB_BASE}${endpoint}`, opts);
+  return await resp.json();
+}
+
+// Listen for messages from Co-work / other extensions / web pages
+// Message format: { type: "uab", endpoint: "/scan", body: {...}, apiKey: "..." }
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && msg.type === 'uab' && msg.endpoint) {
+    relayToUAB(msg.endpoint, msg.body || {}, msg.apiKey)
+      .then(result => sendResponse({ success: true, data: result }))
+      .catch(err => sendResponse({ success: false, error: err.message || String(err) }));
+    return true; // Keep channel open for async response
+  }
+});
+
+// Also support external messages (from Co-work's extension ID or web pages)
+chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
+  if (msg && msg.type === 'uab' && msg.endpoint) {
+    relayToUAB(msg.endpoint, msg.body || {}, msg.apiKey)
+      .then(result => sendResponse({ success: true, data: result }))
+      .catch(err => sendResponse({ success: false, error: err.message || String(err) }));
+    return true;
+  }
+});
+
 // ─── Command Router ──────────────────────────────────────────
 
 async function handleCommand(method, params) {
@@ -112,9 +163,18 @@ async function handleCommand(method, params) {
     case 'exec':    return handleExec(cmd, params);
     case 'nav':     return handleNav(cmd, params);
     case 'capture': return handleCapture(cmd, params);
+    case 'uab':     return handleUABRelay(cmd, params);
     default:
       throw new Error(`Unknown namespace: ${ns}`);
   }
+}
+
+// ─── UAB Relay via WS (for UABServer-originated commands) ─────
+
+async function handleUABRelay(cmd, params) {
+  // cmd is the UAB endpoint without the slash, e.g., "scan", "connect", "find"
+  const endpoint = '/' + cmd;
+  return relayToUAB(endpoint, params, params._apiKey);
 }
 
 // ─── Tab Management ────────────────────────────────────────────

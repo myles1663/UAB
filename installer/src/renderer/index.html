@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=560, initial-scale=1.0">
+  <title>UAB Bridge Installer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0F0A1A;
+      color: #E2E8F0;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-app-region: drag;
+    }
+
+    .screen { display: none; flex-direction: column; align-items: center; justify-content: center; height: 100vh; padding: 40px; }
+    .screen.active { display: flex; }
+
+    /* ─── Welcome Screen ─── */
+    .logo {
+      width: 80px; height: 80px; margin-bottom: 24px;
+    }
+    .logo svg { width: 100%; height: 100%; }
+
+    h1 {
+      font-size: 28px; font-weight: 700; color: #FFFFFF;
+      margin-bottom: 12px; letter-spacing: -0.5px;
+    }
+    .subtitle {
+      font-size: 15px; color: #A0AEC0; text-align: center;
+      line-height: 1.5; max-width: 400px; margin-bottom: 8px;
+    }
+    .compat {
+      font-size: 13px; color: #718096; text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .btn {
+      -webkit-app-region: no-drag;
+      background: #7C3AED; color: white; border: none;
+      padding: 14px 48px; border-radius: 10px; font-size: 16px;
+      font-weight: 600; cursor: pointer; transition: all 0.15s;
+      letter-spacing: 0.3px;
+    }
+    .btn:hover { background: #6D28D9; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { background: #4A3570; cursor: not-allowed; transform: none; }
+
+    /* ─── Installing Screen ─── */
+    .steps {
+      width: 100%; max-width: 440px;
+      list-style: none; margin-top: 20px;
+    }
+    .steps li {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid #1A1530;
+      font-size: 14px; color: #A0AEC0;
+    }
+    .steps li.active { color: #E2E8F0; }
+    .steps li.done { color: #68D391; }
+    .steps li.error { color: #FC8181; }
+    .steps li.warn { color: #F6E05E; }
+
+    .step-icon {
+      width: 24px; height: 24px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .step-icon .spinner {
+      width: 18px; height: 18px; border: 2px solid #4A3570;
+      border-top-color: #7C3AED; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .step-detail {
+      font-size: 12px; color: #718096; margin-top: 2px;
+    }
+    .step-detail.error-detail { color: #FC8181; }
+
+    /* ─── Complete Screen ─── */
+    .check-icon {
+      width: 64px; height: 64px; margin-bottom: 20px;
+      color: #68D391;
+    }
+    .check-icon svg { width: 100%; height: 100%; }
+
+    .info-box {
+      background: #1A1530; border-radius: 10px; padding: 16px 20px;
+      width: 100%; max-width: 440px; margin: 16px 0;
+      font-size: 13px; line-height: 1.7; color: #A0AEC0;
+    }
+    .info-box strong { color: #E2E8F0; }
+
+    .link {
+      -webkit-app-region: no-drag;
+      font-size: 12px; color: #7C3AED; text-decoration: none;
+      cursor: pointer; margin-top: 12px;
+    }
+    .link:hover { text-decoration: underline; }
+
+    .install-title {
+      font-size: 20px; font-weight: 600; color: #FFFFFF;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Screen 1: Welcome -->
+  <div id="screen-welcome" class="screen active">
+    <div class="logo">
+      <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="80" height="80" rx="18" fill="#7C3AED" fill-opacity="0.15"/>
+        <path d="M20 50 C20 50, 28 28, 40 28 C52 28, 60 50, 60 50" stroke="#7C3AED" stroke-width="4" stroke-linecap="round" fill="none"/>
+        <path d="M16 50 L64 50" stroke="#7C3AED" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="20" cy="50" r="4" fill="#7C3AED"/>
+        <circle cx="60" cy="50" r="4" fill="#7C3AED"/>
+        <circle cx="40" cy="28" r="4" fill="#A78BFA"/>
+      </svg>
+    </div>
+    <h1>UAB Local Bridge</h1>
+    <p class="subtitle">Give every AI agent on this computer native desktop control.</p>
+    <p class="compat">Works with Claude Co-work, Claude Code, and any agent that reads markdown.</p>
+    <button class="btn" onclick="startInstall()">Install</button>
+  </div>
+
+  <!-- Screen 2: Installing -->
+  <div id="screen-installing" class="screen">
+    <p class="install-title">Installing UAB Bridge</p>
+    <p class="subtitle" style="margin-bottom: 0">This will only take a moment.</p>
+    <ul class="steps" id="steps-list">
+      <li id="step-requirements"><span class="step-icon" id="icon-requirements">○</span><div><div>Checking system requirements</div><div class="step-detail" id="detail-requirements"></div></div></li>
+      <li id="step-daemon"><span class="step-icon" id="icon-daemon">○</span><div><div>Starting UAB service</div><div class="step-detail" id="detail-daemon"></div></div></li>
+      <li id="step-extension"><span class="step-icon" id="icon-extension">○</span><div><div>Installing Chrome extension bridge</div><div class="step-detail" id="detail-extension"></div></div></li>
+      <li id="step-skills"><span class="step-icon" id="icon-skills">○</span><div><div>Detecting Co-work skills directory</div><div class="step-detail" id="detail-skills"></div></div></li>
+      <li id="step-write"><span class="step-icon" id="icon-write">○</span><div><div>Writing skill file</div><div class="step-detail" id="detail-write"></div></div></li>
+      <li id="step-verify"><span class="step-icon" id="icon-verify">○</span><div><div>Verifying installation</div><div class="step-detail" id="detail-verify"></div></div></li>
+    </ul>
+  </div>
+
+  <!-- Screen 3: Complete -->
+  <div id="screen-complete" class="screen">
+    <div class="check-icon">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="32" cy="32" r="30" stroke="#68D391" stroke-width="3"/>
+        <path d="M20 32 L28 40 L44 24" stroke="#68D391" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1>UAB is installed and running.</h1>
+    <div class="info-box" id="install-summary"></div>
+    <p class="subtitle" id="next-step"></p>
+    <button class="btn" onclick="window.close()" style="margin-top: 20px;">Done</button>
+    <a class="link" id="log-link" onclick="showLog()">View installation log</a>
+  </div>
+
+  <script>
+    const api = window.uabInstaller;
+    let installLog = [];
+    let skillFilePath = '';
+
+    function log(msg) {
+      installLog.push(`[${new Date().toISOString()}] ${msg}`);
+    }
+
+    function setStep(id, state, detail) {
+      const li = document.getElementById(`step-${id}`);
+      const icon = document.getElementById(`icon-${id}`);
+      const detailEl = document.getElementById(`detail-${id}`);
+
+      li.className = state;
+      if (detail) {
+        detailEl.textContent = detail;
+        if (state === 'error') detailEl.className = 'step-detail error-detail';
+      }
+
+      if (state === 'active') {
+        icon.innerHTML = '<div class="spinner"></div>';
+      } else if (state === 'done') {
+        icon.innerHTML = '✓';
+        icon.style.color = '#68D391';
+      } else if (state === 'error') {
+        icon.innerHTML = '✗';
+        icon.style.color = '#FC8181';
+      } else if (state === 'warn') {
+        icon.innerHTML = '⚠';
+        icon.style.color = '#F6E05E';
+      }
+    }
+
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(`screen-${id}`).classList.add('active');
+    }
+
+    async function startInstall() {
+      showScreen('installing');
+      let skillsDir = '';
+      let browsers = [];
+
+      // Step 1: Check requirements
+      setStep('requirements', 'active');
+      try {
+        const req = await api.checkRequirements();
+        log(`Requirements: Node ${req.nodeVersion}, OS: ${req.os}, Port: ${JSON.stringify(req.port)}`);
+        if (req.errors.length > 0) {
+          setStep('requirements', 'error', req.errors.join('; '));
+          log(`Requirements FAILED: ${req.errors.join('; ')}`);
+          return; // Fatal
+        }
+        const portNote = req.port.available ? '' : ' (port in use — UAB may already be running)';
+        setStep('requirements', 'done', `Node ${req.nodeVersion}, ${req.os}${portNote}`);
+      } catch (err) {
+        setStep('requirements', 'error', err.message);
+        log(`Requirements error: ${err.message}`);
+        return;
+      }
+
+      // Step 2: Start daemon
+      setStep('daemon', 'active');
+      try {
+        const daemon = await api.installDaemon();
+        log(`Daemon: installed=${daemon.installed}, running=${daemon.running}, error=${daemon.error}`);
+        if (daemon.error) {
+          setStep('daemon', 'error', daemon.error);
+        } else if (daemon.running) {
+          setStep('daemon', 'done', 'Service running');
+        } else {
+          setStep('daemon', 'warn', 'Installed but health check pending');
+        }
+      } catch (err) {
+        setStep('daemon', 'error', err.message);
+        log(`Daemon error: ${err.message}`);
+      }
+
+      // Step 3: Chrome extension
+      setStep('extension', 'active');
+      try {
+        const ext = await api.installExtension();
+        log(`Extension: registered=${ext.registered}, browsers=${ext.browsers}, error=${ext.error}`);
+        browsers = ext.browsers || [];
+        if (ext.error) {
+          setStep('extension', 'warn', ext.error);
+        } else if (ext.registered) {
+          setStep('extension', 'done', `Registered for ${ext.browsers.join(', ')}`);
+        } else if (ext.browsers.length === 0) {
+          setStep('extension', 'warn', 'No Chromium browsers detected');
+        } else {
+          setStep('extension', 'done', `Browsers found: ${ext.browsers.join(', ')}`);
+        }
+      } catch (err) {
+        setStep('extension', 'warn', err.message);
+        log(`Extension error: ${err.message}`);
+      }
+
+      // Step 4: Detect ALL plugin directories (CLI + Co-work)
+      setStep('skills', 'active');
+      let locations = null;
+      try {
+        locations = await api.detectSkillsDir();
+        skillsDir = locations.cliPluginRoot;
+        const coworkCount = (locations.coworkPaths || []).length;
+        log(`CLI plugin: ${locations.cliPluginRoot}, Co-work sessions: ${coworkCount}`);
+        setStep('skills', 'done', `CLI + ${coworkCount} Co-work session${coworkCount !== 1 ? 's' : ''}`);
+      } catch (err) {
+        setStep('skills', 'error', err.message);
+        log(`Plugin dir error: ${err.message}`);
+      }
+
+      // Step 5: Write skill to ALL locations + register
+      setStep('write', 'active');
+      if (locations) {
+        try {
+          const write = await api.writeSkillFile(locations);
+          skillFilePath = write.path || '';
+          log(`Skill write: CLI=${write.cliOk}, Co-work=${write.coworkCount}`);
+          if (write.success) {
+            const parts = [];
+            if (write.cliOk) parts.push('Claude Code CLI');
+            if (write.coworkCount > 0) parts.push(`${write.coworkCount} Co-work session${write.coworkCount > 1 ? 's' : ''}`);
+            setStep('write', 'done', parts.join(' + ') || 'Written');
+          } else {
+            setStep('write', 'error', write.error || 'Write failed');
+          }
+        } catch (err) {
+          setStep('write', 'error', err.message);
+          log(`Skill write error: ${err.message}`);
+        }
+      } else {
+        setStep('write', 'error', 'No plugin directories detected');
+      }
+
+      // Step 6: Verify
+      setStep('verify', 'active');
+      try {
+        const verify = await api.verifyInstall(skillFilePath);
+        log(`Verify: server=${verify.serverHealthy}, skillFile=${verify.skillFileExists}`);
+        if (verify.serverHealthy && verify.skillFileExists) {
+          setStep('verify', 'done', 'All checks passed');
+        } else {
+          const issues = [];
+          if (!verify.serverHealthy) issues.push('server not responding');
+          if (!verify.skillFileExists) issues.push('skill file missing');
+          setStep('verify', 'warn', issues.join(', '));
+        }
+      } catch (err) {
+        setStep('verify', 'warn', err.message);
+        log(`Verify error: ${err.message}`);
+      }
+
+      // Show complete screen after brief delay
+      await new Promise(r => setTimeout(r, 800));
+      showComplete(skillsDir, browsers);
+    }
+
+    function showComplete(skillsDir, browsers) {
+      showScreen('complete');
+
+      const summary = document.getElementById('install-summary');
+      let html = '<strong>Server:</strong> http://localhost:3100 (authenticated)<br>';
+      if (browsers.length > 0) html += `<strong>Browsers:</strong> ${browsers.join(', ')}<br>`;
+      html += '<strong>Works with:</strong> Co-work, Claude Code CLI, Claude Code Desktop, any agent';
+      summary.innerHTML = html;
+
+      const nextStep = document.getElementById('next-step');
+      nextStep.textContent = 'Open any Claude product. UAB is ready.';
+    }
+
+    function showLog() {
+      const logText = installLog.join('\n');
+      const w = window.open('', 'log', 'width=600,height=400');
+      w.document.write(`<pre style="font-family:monospace;font-size:12px;padding:20px;background:#0F0A1A;color:#E2E8F0;">${logText}</pre>`);
+    }
+  </script>
+</body>
+</html>

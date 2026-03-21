@@ -278,12 +278,17 @@ export class UABConnector {
       // Name-based connection
       const profiles = await this.find(target);
       if (profiles.length === 0) throw new Error(`No app found matching "${target}"`);
-      if (profiles.length > 1 && !profiles[0].pid) {
-        throw new Error(
-          `Multiple apps match "${target}": ${profiles.map(p => p.name).join(', ')}. Use PID.`
-        );
+
+      // For multi-process apps (Electron, etc.), prefer the process with a window title.
+      // This avoids connecting to broker/crashpad/GPU subprocesses that have no UI.
+      let best = profiles[0];
+      if (profiles.length > 1) {
+        const withWindow = profiles.filter(p => p.windowTitle && p.windowTitle.length > 0);
+        if (withWindow.length > 0) {
+          best = withWindow[0];
+        }
       }
-      app = this.registry.toDetectedApp(profiles[0]);
+      app = this.registry.toDetectedApp(best);
     }
 
     // Ensure we have a valid PID

@@ -252,6 +252,31 @@ Start-Sleep -Milliseconds 200
   }
 }
 
+/**
+ * Type a full string into the focused window in one shot.
+ * Brings the window to foreground first, then sends all text at once.
+ * Much faster than per-character keypress — one call for any length string.
+ */
+export function typeText(pid: number, text: string): ActionResult {
+  const escaped = text.replace(/'/g, "''")
+    .replace(/\+/g, '{+}').replace(/\^/g, '{^}')
+    .replace(/%/g, '{%}').replace(/~/g, '{~}')
+    .replace(/\(/g, '{(}').replace(/\)/g, '{)}')
+    .replace(/\{/g, '{{}').replace(/\}/g, '{}}');
+
+  const script = `${foregroundScript(pid)}
+Add-Type -AssemblyName System.Windows.Forms
+Start-Sleep -Milliseconds 100
+[System.Windows.Forms.SendKeys]::SendWait('${escaped}')
+@{ success = $true } | ConvertTo-Json -Compress
+`;
+  try {
+    return runPSJsonInteractive(script, 15000) as ActionResult;
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ─── Window Actions ──────────────────────────────────────────
 
 /**
@@ -334,27 +359,46 @@ Add-Type -ReferencedAssemblies $sdAssembly -TypeDefinition '
   public class VisionCapture {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, int nFlags);
+    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hWnd);
+    [DllImport("shcore.dll")] public static extern int SetProcessDpiAwareness(int value);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 
     public static string CaptureToFile(IntPtr hWnd, string path) {
+      // Enable per-monitor DPI awareness for accurate coordinates
+      try { SetProcessDpiAwareness(2); } catch { try { SetProcessDPIAware(); } catch {} }
+
       RECT rect;
       if (!GetWindowRect(hWnd, out rect)) return "ERR:GetWindowRect failed";
       int w = rect.Right - rect.Left;
       int h = rect.Bottom - rect.Top;
       if (w <= 0 || h <= 0) return "ERR:Zero size " + w + "x" + h;
-      using (Bitmap bmp = new Bitmap(w, h)) {
+
+      // Get DPI scaling for hi-res capture
+      uint dpi = 96;
+      try { dpi = GetDpiForWindow(hWnd); } catch {}
+      float scale = dpi / 96f;
+      int captureW = (int)(w * scale);
+      int captureH = (int)(h * scale);
+
+      using (Bitmap bmp = new Bitmap(captureW, captureH)) {
+        bmp.SetResolution(dpi, dpi);
         using (Graphics g = Graphics.FromImage(bmp)) {
+          g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
           IntPtr hdc = g.GetHdc();
           bool ok = PrintWindow(hWnd, hdc, 2);
           g.ReleaseHdc(hdc);
-          if (!ok) g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(w, h));
+          if (!ok) {
+            // Fallback: screen capture at physical resolution
+            g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(captureW, captureH));
+          }
         }
         string dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
           Directory.CreateDirectory(dir);
         bmp.Save(path, ImageFormat.Png);
       }
-      return "OK:" + rect.Left + "," + rect.Top + "," + (rect.Right-rect.Left) + "," + (rect.Bottom-rect.Top);
+      return "OK:" + rect.Left + "," + rect.Top + "," + captureW + "," + captureH;
     }
 
     public static string ToBase64(string path) {

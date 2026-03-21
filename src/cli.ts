@@ -596,11 +596,209 @@ async function main() {
         break;
       }
 
+      // ─── Install / Uninstall / Status ───────────────────────────
+      case 'install': {
+        const { installDaemon, isDaemonInstalled, isDaemonRunning, startDaemon } = await import('./cowork-bridge/daemon.js');
+        const { registerViaRegistry, extensionExists, generateIcons, isExtensionInstalled } = await import('./plugins/chrome-ext/installer.js');
+        const { findCoworkSkillsDir, registerPlugin, writeSkillToAllLocations } = await import('./cowork-bridge/skills-dir.js');
+        const { generateSkillContent } = await import('./cowork-bridge/skill-template.js');
+        const { detectHostGatewayIp, getOrCreateApiKey } = await import('./cowork-bridge/host-network.js');
+        const { existsSync: fileExists } = await import('fs');
+        const { resolve: resolvePath } = await import('path');
+
+        // Step 0: Detect host network and generate API key
+        const hostNet = detectHostGatewayIp();
+        const apiKey = getOrCreateApiKey();
+        console.log(`Host gateway IP: ${hostNet.hostIp} (${hostNet.method}: ${hostNet.adapterName})`);
+
+        // Step 1: Check system requirements
+        const nodeVer = process.versions.node;
+        const majorVer = parseInt(nodeVer.split('.')[0], 10);
+        if (majorVer < 18) {
+          console.log('Checking system requirements... FAIL (Node.js >= 18 required)');
+          process.exit(1);
+        }
+        console.log('Checking system requirements... ok');
+
+        // Step 2: Start UAB service (bound to 0.0.0.0 with API key)
+        const installed = await isDaemonInstalled();
+        if (!installed) {
+          const result = await installDaemon(apiKey);
+          if (!result.success) {
+            console.log(`Starting UAB service... FAIL (${result.message})`);
+          } else {
+            console.log('Starting UAB service... installed (0.0.0.0:3100, authenticated)');
+          }
+        }
+        const running = await isDaemonRunning();
+        if (!running) {
+          await startDaemon();
+          let healthy = false;
+          for (let i = 0; i < 10; i++) {
+            await new Promise(r => setTimeout(r, 500));
+            if (await isDaemonRunning()) { healthy = true; break; }
+          }
+          if (healthy) {
+            console.log('Starting UAB service... ok');
+          } else {
+            console.log('Starting UAB service... started (health check pending)');
+          }
+        } else {
+          console.log('Starting UAB service... already running');
+        }
+
+        // Step 3: Install Chrome extension
+        if (extensionExists()) {
+          generateIcons();
+          const crxPath = resolvePath('data/uab-bridge.crx');
+          if (!fileExists(crxPath)) {
+            try {
+              const { execSync: exec } = await import('child_process');
+              exec('node scripts/pack-extension.js', { stdio: 'pipe', cwd: resolvePath('.') });
+            } catch {
+              console.log('Installing Chrome extension... WARN (could not pack .crx)');
+            }
+          }
+
+          if (isExtensionInstalled()) {
+            console.log('Installing Chrome extension... already registered');
+          } else {
+            const regResult = registerViaRegistry();
+            if (regResult.success) {
+              console.log(`Installing Chrome extension... registered (${regResult.browsers.join(', ')})`);
+            } else {
+              console.log('Installing Chrome extension... manual install required');
+            }
+          }
+        } else {
+          console.log('Installing Chrome extension... WARN (extension files not found)');
+        }
+
+        // Step 4: Detect plugin directories (CLI + Co-work)
+        const skillsResult = await findCoworkSkillsDir();
+        console.log(`Detecting plugin directories... CLI: ${skillsResult.pluginRoot}`);
+        if (skillsResult.coworkPaths.length > 0) {
+          console.log(`  Co-work sessions: ${skillsResult.coworkPaths.length} found`);
+        }
+
+        // Step 5: Write SKILL.md to ALL locations (CLI + Co-work)
+        const skillContent = generateSkillContent({ hostIp: hostNet.hostIp, apiKey });
+        const writeResult = writeSkillToAllLocations(
+          skillsResult.skillFilePath,
+          skillsResult.coworkPaths,
+          skillContent,
+        );
+        const written = writeResult.cli;
+        console.log(`Writing skill file... CLI: ${writeResult.cli ? 'ok' : 'FAIL'}, Co-work: ${writeResult.cowork} session(s)`);
+
+        // Register plugin in Claude Code settings
+        const regResult = await registerPlugin();
+        if (regResult.success) {
+          console.log('Registering plugin... enabled in Claude Code');
+        } else {
+          console.log(`Registering plugin... WARN (${regResult.message})`);
+        }
+
+        // Step 6: Verify
+        const finalRunning = await isDaemonRunning();
+        if (finalRunning && written) {
+          console.log('Verifying... ok');
+          console.log('');
+          console.log('UAB Bridge installed. Open Claude Code and ask Claude to control an app.');
+        } else {
+          console.log('Verifying... partial (some checks did not pass)');
+        }
+        break;
+      }
+
+      case 'uninstall': {
+        const { uninstallDaemon, stopDaemon: stopD } = await import('./cowork-bridge/daemon.js');
+        const { findCoworkSkillsDir: findSkills, unregisterPlugin } = await import('./cowork-bridge/skills-dir.js');
+        const { existsSync: fExists, unlinkSync: unlink, rmSync } = await import('fs');
+        const { join: joinP } = await import('path');
+
+        // Stop and uninstall daemon
+        await stopD();
+        const uninstResult = await uninstallDaemon();
+        console.log(`Removing UAB service... ${uninstResult.success ? 'ok' : uninstResult.message}`);
+
+        // Remove skill files from ALL locations (CLI + Co-work)
+        try {
+          const skillsDir = await findSkills();
+
+          // CLI plugin
+          if (fExists(skillsDir.skillFilePath)) {
+            unlink(skillsDir.skillFilePath);
+            console.log(`Removing CLI skill... removed`);
+          }
+          try { rmSync(skillsDir.pluginRoot, { recursive: true, force: true }); } catch { /* */ }
+
+          // Co-work sessions
+          let coworkRemoved = 0;
+          for (const coworkDir of skillsDir.coworkPaths) {
+            try {
+              const skillFile = joinP(coworkDir, 'SKILL.md');
+              if (fExists(skillFile)) { unlink(skillFile); coworkRemoved++; }
+              // Remove the plugin directory
+              const pluginRoot = joinP(coworkDir, '..', '..');
+              rmSync(pluginRoot, { recursive: true, force: true });
+            } catch { /* best effort */ }
+          }
+          console.log(`Removing Co-work skills... ${coworkRemoved} session(s) cleaned`);
+        } catch {
+          console.log('Removing skill files... skipped');
+        }
+
+        // Unregister from Claude Code settings
+        const unregResult = await unregisterPlugin();
+        console.log(`Unregistering plugin... ${unregResult.success ? 'ok' : unregResult.message}`);
+
+        console.log('');
+        console.log('UAB Bridge uninstalled.');
+        break;
+      }
+
+      case 'status': {
+        const { isDaemonInstalled: isInst, isDaemonRunning: isRun } = await import('./cowork-bridge/daemon.js');
+        const { isExtensionInstalled: isExtInst, extensionExists: extEx } = await import('./plugins/chrome-ext/installer.js');
+        const { findCoworkSkillsDir: findSD } = await import('./cowork-bridge/skills-dir.js');
+        const { existsSync: fEx } = await import('fs');
+
+        const daemonInstalled = await isInst();
+        const daemonRunning = await isRun();
+        const extInstalled = isExtInst();
+        const extFilesExist = extEx();
+        const skillsDir = await findSD();
+        const skillFileExists = fEx(skillsDir.skillFilePath);
+
+        output({
+          daemon: {
+            installed: daemonInstalled,
+            running: daemonRunning,
+          },
+          extension: {
+            filesExist: extFilesExist,
+            registered: extInstalled,
+          },
+          plugin: {
+            pluginRoot: skillsDir.pluginRoot,
+            skillFile: skillsDir.skillFilePath,
+            skillFileExists,
+            method: skillsDir.method,
+          },
+          server: {
+            healthy: daemonRunning,
+            url: 'http://127.0.0.1:3100',
+          },
+        });
+        break;
+      }
+
       case 'help':
       default:
         output({
           name: 'Universal App Bridge CLI',
-          version: '0.8.0',
+          version: '0.9.0',
           description: 'Framework-independent desktop app control for AI agents (desktop + server)',
           connectorCommands: {
             scan: 'Detect apps + save to registry (persists across invocations) [--electron]',
@@ -653,6 +851,11 @@ async function main() {
           serverCommands: {
             serve: 'Start HTTP server: serve [--port 3100] [--host 127.0.0.1] [--api-key secret]',
             env: 'Show detected environment and defaults (desktop/server/container)',
+          },
+          installCommands: {
+            install: 'Full install: daemon + extension + skill file (all-in-one)',
+            uninstall: 'Remove daemon, skill file, and clean up',
+            status: 'Report daemon, extension, skill file, and server health',
           },
           globalFlags: {
             '--profile-dir': 'Custom profile directory (default: data/uab-profiles)',

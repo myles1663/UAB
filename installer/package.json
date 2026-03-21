@@ -1,0 +1,61 @@
+{
+  "name": "uab-bridge-installer",
+  "version": "0.9.0",
+  "description": "UAB Bridge Installer — One-click setup for desktop AI control",
+  "main": "src/main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron src/main.js",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.lancelot.uab-bridge-installer",
+    "productName": "UAB Bridge",
+    "directories": {
+      "output": "dist-installer"
+    },
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "uab-dist"
+      },
+      {
+        "from": "../data",
+        "to": "uab-data"
+      },
+      {
+        "from": "../scripts",
+        "to": "uab-scripts"
+      },
+      {
+        "from": "../package.json",
+        "to": "uab-package.json"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icons/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "installerIcon": "icons/icon.ico",
+      "uninstallerIcon": "icons/icon.ico",
+      "artifactName": "UAB-Bridge-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "icons/icon.icns",
+      "category": "public.app-category.developer-tools"
+    },
+    "dmg": {
+      "artifactName": "UAB-Bridge-${version}.${ext}"
+    }
+  }
+}

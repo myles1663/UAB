@@ -139,7 +139,22 @@ export class UABServer {
       return;
     }
 
-    // Auth check
+    // Parse route early — /health is exempt from auth
+    const path = (req.url || '/').replace(/\/$/, '') || '/';
+
+    // GET /health is always accessible (used by daemon health checks)
+    if (req.method === 'GET' && path === '/health') {
+      this.sendJSON(res, 200, {
+        status: 'ok',
+        version: '0.9.0',
+        environment: this.environment,
+        connector: this.connector.running,
+        uptime: Math.floor(process.uptime()),
+      });
+      return;
+    }
+
+    // Auth check (all other endpoints)
     if (this.opts.apiKey) {
       const provided = req.headers['x-api-key'];
       if (provided !== this.opts.apiKey) {
@@ -148,20 +163,8 @@ export class UABServer {
       }
     }
 
-    // Parse route
-    const path = (req.url || '/').replace(/\/$/, '') || '/';
-
-    // GET /health and /info don't need a body
+    // GET /info (auth required)
     if (req.method === 'GET') {
-      if (path === '/health') {
-        this.sendJSON(res, 200, {
-          status: 'ok',
-          environment: this.environment,
-          connector: this.connector.running,
-          uptime: process.uptime(),
-        });
-        return;
-      }
       if (path === '/info') {
         this.sendJSON(res, 200, {
           name: 'Universal App Bridge Server',
@@ -396,6 +399,111 @@ export class UABServer {
       if (!conn.isConnected(pid)) await conn.connect(pid);
       const result = await conn.screenshot(pid, body.outputPath as string);
       return { pid, ...result };
+    });
+
+    // Describe — screenshot + Vision AI to read what's on screen
+    this.routes.set('/describe', async (body, conn) => {
+      const pid = body.pid as number;
+      const name = body.name as string;
+      if (!pid && !name) throw new Error('Missing required field: pid or name');
+
+      let targetPid = pid;
+      if (!targetPid && name) {
+        const found = await conn.find(name);
+        if (found.length === 0) throw new Error(`No app found: ${name}`);
+        const withWindow = found.filter(p => p.windowTitle && p.windowTitle.length > 0);
+        targetPid = (withWindow.length > 0 ? withWindow[0] : found[0]).pid;
+      }
+
+      if (!conn.isConnected(targetPid)) await conn.connect(targetPid);
+      const screenshotResult = await conn.screenshot(targetPid);
+      if (!screenshotResult.data && !screenshotResult.base64) {
+        throw new Error('Screenshot failed');
+      }
+
+      const imageData = screenshotResult.data || screenshotResult.base64;
+
+      // Use Anthropic Vision API if available
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        return {
+          pid: targetPid,
+          screenshot: screenshotResult.path,
+          description: 'Set ANTHROPIC_API_KEY environment variable to enable Vision AI descriptions.',
+        };
+      }
+
+      const { default: Anthropic } = await import('@anthropic-ai/sdk');
+      const client = new Anthropic({ apiKey });
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: 'image/png', data: imageData },
+            },
+            {
+              type: 'text',
+              text: 'Describe what you see on this application window screenshot. Be specific about: the app name, all visible text content, buttons, menus, input fields, and any messages or data shown. Be concise but thorough.',
+            },
+          ],
+        }],
+      });
+
+      const description = response.content
+        .filter((b: any) => b.type === 'text')
+        .map((b: any) => b.text)
+        .join('\n');
+
+      return { pid: targetPid, screenshot: screenshotResult.path, description };
+    });
+
+    // Launch / Focus
+    this.routes.set('/open', async (body) => {
+      const target = body.target as string;
+      if (!target) throw new Error('Missing required field: target (app name or path)');
+      const { execSync } = await import('child_process');
+      const platform = (await import('os')).platform();
+
+      try {
+        if (platform === 'win32') {
+          execSync(`start "" "${target}"`, { shell: 'cmd.exe', stdio: 'pipe', windowsHide: false });
+        } else {
+          execSync(`open "${target}"`, { stdio: 'pipe' });
+        }
+        // Wait for the app to start
+        await new Promise(r => setTimeout(r, 2000));
+        return { success: true, message: `Launched ${target}` };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    });
+
+    this.routes.set('/focus', async (body, conn) => {
+      const pid = body.pid as number;
+      const name = body.name as string;
+      if (!pid && !name) throw new Error('Missing required field: pid or name');
+
+      let targetPid = pid;
+      if (!targetPid && name) {
+        const found = await conn.find(name);
+        if (found.length === 0) throw new Error(`No app found: ${name}`);
+        const withWindow = found.filter(p => p.windowTitle && p.windowTitle.length > 0);
+        targetPid = (withWindow.length > 0 ? withWindow[0] : found[0]).pid;
+      }
+
+      // Use Vision input's ForceForeground
+      const { clickAt } = await import('./plugins/vision/input.js');
+      const { getWindowBounds } = await import('./plugins/vision/input.js');
+      const bounds = getWindowBounds(targetPid);
+      if (!bounds.success) throw new Error(bounds.error || 'Cannot find window');
+
+      // Click center of window to bring to front
+      clickAt(targetPid, (bounds.x || 0) + (bounds.width || 0) / 2, (bounds.y || 0) + 30);
+      return { success: true, pid: targetPid, title: bounds.title };
     });
 
     // Diagnostics

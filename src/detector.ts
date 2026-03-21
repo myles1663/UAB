@@ -542,10 +542,20 @@ export class FrameworkDetector {
   async findByName(name: string): Promise<DetectedApp[]> {
     const all = await this.detectAll();
     const nameLower = name.toLowerCase();
-    return all.filter(app =>
+    const matches = all.filter(app =>
       app.name.toLowerCase().includes(nameLower) ||
       (app.windowTitle?.toLowerCase().includes(nameLower))
     );
+
+    // For multi-process apps (Electron, etc.), prefer the process with a visible
+    // window title. This avoids latching onto broker/crashpad/GPU subprocesses.
+    if (matches.length > 1) {
+      const withWindow = matches.filter(m => m.windowTitle && m.windowTitle.length > 0);
+      if (withWindow.length > 0) {
+        return withWindow;
+      }
+    }
+    return matches;
   }
 
   clearCache(): void {
