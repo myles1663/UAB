@@ -20,6 +20,7 @@ export declare class ControlRouter {
     fallback(pid: number): Promise<RoutedConnection | null>;
     private getAvailableMethods;
     private uiaFallback;
+    private visionFallback;
     private tryMethod;
 }
 export declare class RoutedConnection implements PluginConnection {
@@ -38,3 +39,4 @@ export declare class RoutedConnection implements PluginConnection {
     private withActionFallback;
     private withFallback;
 }
+//# sourceMappingURL=router.d.ts.map

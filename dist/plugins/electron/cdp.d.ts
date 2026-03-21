@@ -43,3 +43,4 @@ export declare class CDPConnection {
     disconnect(): Promise<void>;
 }
 export {};
+//# sourceMappingURL=cdp.d.ts.map

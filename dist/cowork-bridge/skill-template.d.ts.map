@@ -1,0 +1,1 @@
+{"version":3,"file":"skill-template.d.ts","sourceRoot":"","sources":["../../src/cowork-bridge/skill-template.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;GAWG;AAcH,MAAM,WAAW,oBAAoB;IACnC,sDAAsD;IACtD,MAAM,EAAE,MAAM,CAAC;IACf,yCAAyC;IACzC,MAAM,EAAE,MAAM,CAAC;IACf,oDAAoD;IACpD,WAAW,CAAC,EAAE,MAAM,CAAC;CACtB;AAED,wBAAgB,oBAAoB,CAAC,OAAO,EAAE,oBAAoB,GAAG,MAAM,CAgL1E"}

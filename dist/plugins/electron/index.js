@@ -20,30 +20,81 @@ export class ElectronPlugin {
         return app.framework === 'electron';
     }
     async connect(app) {
-        const port = app.connectionInfo?.debugPort || 9222;
-        let actualPort = port;
-        if (!app.connectionInfo?.debugPort) {
-            const discovered = CDPConnection.findDebugPort(app.pid);
-            if (discovered) {
-                actualPort = discovered;
+        // Try finding a debug port on the given PID or its children.
+        // Electron apps: main process often doesn't have the debug port,
+        // but a child process (or a sibling launched with --remote-debugging-port) might.
+        const portsToTry = this.findDebugPorts(app);
+        for (const actualPort of portsToTry) {
+            try {
+                const targets = await CDPConnection.discoverTargets('127.0.0.1', actualPort);
+                const pageTarget = targets.find(t => t.type === 'page');
+                if (!pageTarget)
+                    continue;
+                const cdp = new CDPConnection('127.0.0.1', actualPort);
+                await cdp.connect(pageTarget.webSocketDebuggerUrl);
+                await cdp.enableDOM();
+                await cdp.enableRuntime();
+                await cdp.enablePage();
+                return new ElectronConnection(app, cdp);
+            }
+            catch {
+                // This port didn't work, try the next one
+            }
+        }
+        throw new Error(`Cannot find CDP debug port for ${app.name} (PID: ${app.pid}).\n` +
+            `Relaunch with: ${CDPConnection.getEnableCommand(app.path, 9222)}\n` +
+            `Or set ELECTRON_ENABLE_REMOTE_DEBUGGING=1 environment variable.`);
+    }
+    /**
+     * Find all potential CDP debug ports for an Electron app.
+     * Checks the main process AND all child processes (renderer, GPU, utility).
+     */
+    findDebugPorts(app) {
+        const ports = [];
+        // Explicit port from detection
+        if (app.connectionInfo?.debugPort) {
+            ports.push(app.connectionInfo.debugPort);
+        }
+        // Check the main PID's command line
+        const mainPort = CDPConnection.findDebugPort(app.pid);
+        if (mainPort && !ports.includes(mainPort)) {
+            ports.push(mainPort);
+        }
+        // Check child processes — Electron's main process spawns renderer/GPU
+        // children that may have the debug port
+        try {
+            const { execSync } = require('child_process');
+            const cmd = process.platform === 'win32'
+                ? `wmic process where "ParentProcessId=${app.pid}" get ProcessId,CommandLine /format:csv`
+                : `pgrep -P ${app.pid}`;
+            const output = execSync(cmd, { encoding: 'utf-8', timeout: 5000 });
+            if (process.platform === 'win32') {
+                const portMatches = output.matchAll(/--remote-debugging-port=(\d+)/g);
+                for (const m of portMatches) {
+                    const p = parseInt(m[1], 10);
+                    if (!ports.includes(p))
+                        ports.push(p);
+                }
             }
             else {
-                throw new Error(`Cannot find CDP debug port for ${app.name} (PID: ${app.pid}).\n` +
-                    `Relaunch with: ${CDPConnection.getEnableCommand(app.path, 9222)}\n` +
-                    `Or set ELECTRON_ENABLE_REMOTE_DEBUGGING=1 environment variable.`);
+                // On macOS/Linux, check each child's command line
+                const childPids = output.trim().split('\n').filter(Boolean);
+                for (const cpid of childPids) {
+                    const childPort = CDPConnection.findDebugPort(parseInt(cpid.trim(), 10));
+                    if (childPort && !ports.includes(childPort))
+                        ports.push(childPort);
+                }
             }
         }
-        const cdp = new CDPConnection('127.0.0.1', actualPort);
-        const targets = await CDPConnection.discoverTargets('127.0.0.1', actualPort);
-        const pageTarget = targets.find(t => t.type === 'page');
-        if (!pageTarget) {
-            throw new Error(`No page targets found on CDP port ${actualPort}. Found: ${targets.map(t => t.type).join(', ')}`);
+        catch {
+            // Can't enumerate children — proceed with what we have
         }
-        await cdp.connect(pageTarget.webSocketDebuggerUrl);
-        await cdp.enableDOM();
-        await cdp.enableRuntime();
-        await cdp.enablePage();
-        return new ElectronConnection(app, cdp);
+        // Common fallback ports
+        for (const p of [9222, 9229, 9223, 9224, 9225]) {
+            if (!ports.includes(p))
+                ports.push(p);
+        }
+        return ports;
     }
 }
 class ElectronConnection {
@@ -108,12 +159,7 @@ class ElectronConnection {
             case 'move': return await this.doWindowMove(params);
             case 'resize': return await this.doWindowResize(params);
         }
-        // Auto-enumerate if node map is empty (stateless CLI calls)
-        let nodeId = this.mapper.getNodeId(elementId);
-        if (!nodeId) {
-            await this.enumerate();
-            nodeId = this.mapper.getNodeId(elementId);
-        }
+        const nodeId = this.mapper.getNodeId(elementId);
         if (!nodeId)
             return { success: false, error: `Element not found: ${elementId}` };
         try {
@@ -677,20 +723,20 @@ $targetPid = ${this.app.pid}
 $hWnd = [IntPtr]::Zero
 [Win32]::EnumWindows({
   param($hwnd, $lparam)
-  $wpid = 0
-  [Win32]::GetWindowThreadProcessId($hwnd, [ref]$wpid) | Out-Null
-  if ($wpid -eq $targetPid -and [Win32]::IsWindowVisible($hwnd)) {
+  $pid = 0
+  [Win32]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
+  if ($pid -eq $targetPid -and [Win32]::IsWindowVisible($hwnd)) {
     $script:hWnd = $hwnd
     return $false
   }
   return $true
-}, [IntPtr]::Zero) | Out-Null
+}, [IntPtr]::Zero)
 
 if ($hWnd -eq [IntPtr]::Zero) {
   @{ success = $false; error = 'No visible window found for PID ${this.app.pid}' } | ConvertTo-Json -Compress
 } else {
   ${actionMap[action]}
-  @{ success = $true; action = '${action}'; wpid = $targetPid } | ConvertTo-Json -Compress
+  @{ success = $true; action = '${action}'; pid = $targetPid } | ConvertTo-Json -Compress
 }
 `;
             const result = runPSJsonInteractive(script, 10000);
@@ -725,14 +771,14 @@ $targetPid = ${this.app.pid}
 $hWnd = [IntPtr]::Zero
 [Win32Move]::EnumWindows({
   param($hwnd, $lparam)
-  $wpid = 0
-  [Win32Move]::GetWindowThreadProcessId($hwnd, [ref]$wpid) | Out-Null
-  if ($wpid -eq $targetPid -and [Win32Move]::IsWindowVisible($hwnd)) {
+  $pid = 0
+  [Win32Move]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
+  if ($pid -eq $targetPid -and [Win32Move]::IsWindowVisible($hwnd)) {
     $script:hWnd = $hwnd
     return $false
   }
   return $true
-}, [IntPtr]::Zero) | Out-Null
+}, [IntPtr]::Zero)
 
 if ($hWnd -eq [IntPtr]::Zero) {
   @{ success = $false; error = 'No visible window found' } | ConvertTo-Json -Compress
@@ -776,9 +822,9 @@ $targetPid = ${this.app.pid}
 $hWnd = [IntPtr]::Zero
 [Win32Resize]::EnumWindows({
   param($hwnd, $lparam)
-  $wpid = 0
-  [Win32Resize]::GetWindowThreadProcessId($hwnd, [ref]$wpid) | Out-Null
-  if ($wpid -eq $targetPid -and [Win32Resize]::IsWindowVisible($hwnd)) {
+  $pid = 0
+  [Win32Resize]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
+  if ($pid -eq $targetPid -and [Win32Resize]::IsWindowVisible($hwnd)) {
     $script:hWnd = $hwnd
     return $false
   }

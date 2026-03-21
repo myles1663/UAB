@@ -39,6 +39,7 @@
  * node dist/uab/cli.js act 1234 btn_1 click
  * ```
  */
+import { detectEnvironment, getDefaults } from './environment.js';
 import { FrameworkDetector } from './detector.js';
 import { PluginManager } from './plugins/base.js';
 import { ElectronPlugin } from './plugins/electron/index.js';
@@ -71,12 +72,15 @@ export class UABConnector {
     opts;
     started = false;
     constructor(options) {
+        // Auto-detect environment defaults if not explicitly set
+        const envDefaults = getDefaults(options?.mode ?? detectEnvironment().mode);
         this.opts = {
             profileDir: options?.profileDir || 'data/uab-profiles',
-            persistent: options?.persistent ?? false,
-            extensionBridge: options?.extensionBridge ?? false,
+            persistent: options?.persistent ?? envDefaults.persistent,
+            extensionBridge: options?.extensionBridge ?? envDefaults.extensionBridge,
             loadProfiles: options?.loadProfiles ?? true,
-            rateLimit: options?.rateLimit ?? 100,
+            rateLimit: options?.rateLimit ?? envDefaults.rateLimit,
+            mode: options?.mode ?? detectEnvironment().mode,
         };
         this.registry = new AppRegistry({ profileDir: this.opts.profileDir });
         this.detector = new FrameworkDetector();
@@ -212,10 +216,16 @@ export class UABConnector {
             const profiles = await this.find(target);
             if (profiles.length === 0)
                 throw new Error(`No app found matching "${target}"`);
-            if (profiles.length > 1 && !profiles[0].pid) {
-                throw new Error(`Multiple apps match "${target}": ${profiles.map(p => p.name).join(', ')}. Use PID.`);
+            // For multi-process apps (Electron, etc.), prefer the process with a window title.
+            // This avoids connecting to broker/crashpad/GPU subprocesses that have no UI.
+            let best = profiles[0];
+            if (profiles.length > 1) {
+                const withWindow = profiles.filter(p => p.windowTitle && p.windowTitle.length > 0);
+                if (withWindow.length > 0) {
+                    best = withWindow[0];
+                }
             }
-            app = this.registry.toDetectedApp(profiles[0]);
+            app = this.registry.toDetectedApp(best);
         }
         // Ensure we have a valid PID
         if (!app.pid)
@@ -340,16 +350,24 @@ export class UABConnector {
         const mapped = actionMap[action.toLowerCase()] || action;
         return this.act(pid, '', mapped, params);
     }
-    /** Capture a screenshot of the app window. */
+    /** Capture a screenshot of the app window. Returns path + base64 data. */
     async screenshot(pid, outputPath) {
         this.ensureConnected(pid);
         const route = this.router.getRoute(pid);
         const path = outputPath || `data/screenshots/uab-${pid}-${Date.now()}.png`;
         // Ensure directory exists
-        const { mkdirSync } = await import('fs');
+        const { mkdirSync, readFileSync, existsSync } = await import('fs');
         const { dirname } = await import('path');
         mkdirSync(dirname(path), { recursive: true });
-        return route.connection.act('', 'screenshot', { outputPath: path });
+        const result = await route.connection.act('', 'screenshot', { outputPath: path });
+        // Always include base64 in the response so remote clients (Co-work) can read it
+        if (result.success && !result.base64 && !result.data) {
+            const filePath = result.path || path;
+            if (existsSync(filePath)) {
+                result.data = readFileSync(filePath).toString('base64');
+            }
+        }
+        return result;
     }
     // ─── Diagnostics ────────────────────────────────────────────────
     /** Get cache hit statistics. */

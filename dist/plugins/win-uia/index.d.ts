@@ -23,3 +23,4 @@ export declare class WinUIAPlugin implements FrameworkPlugin {
     connect(app: DetectedApp): Promise<PluginConnection>;
 }
 export default WinUIAPlugin;
+//# sourceMappingURL=index.d.ts.map

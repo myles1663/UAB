@@ -45,14 +45,16 @@ import type { UIElement, ElementSelector, ActionType, ActionParams, ActionResult
 export interface ConnectorOptions {
     /** Directory for JSON profile persistence. Default: "data/uab-profiles" */
     profileDir?: string;
-    /** Enable persistent connections with health monitoring. Default: false (stateless) */
+    /** Enable persistent connections with health monitoring. Default: auto-detected from environment */
     persistent?: boolean;
-    /** Enable Chrome extension WebSocket bridge. Default: false */
+    /** Enable Chrome extension WebSocket bridge. Default: auto-detected from environment */
     extensionBridge?: boolean;
     /** Load existing profiles on start. Default: true */
     loadProfiles?: boolean;
-    /** Max actions per minute per PID (rate limiting). Default: 100 */
+    /** Max actions per minute per PID (rate limiting). Default: auto-detected from environment */
     rateLimit?: number;
+    /** Force a specific runtime mode instead of auto-detecting. */
+    mode?: 'desktop' | 'server' | 'container';
 }
 export interface ConnectionInfo {
     pid: number;
@@ -125,7 +127,7 @@ export declare class UABConnector {
         width?: number;
         height?: number;
     }): Promise<ActionResult>;
-    /** Capture a screenshot of the app window. */
+    /** Capture a screenshot of the app window. Returns path + base64 data. */
     screenshot(pid: number, outputPath?: string): Promise<ActionResult>;
     /** Get cache hit statistics. */
     cacheStats(): {
@@ -163,3 +165,4 @@ export declare class UABConnector {
         childCount: number;
     }>;
 }
+//# sourceMappingURL=connector.d.ts.map

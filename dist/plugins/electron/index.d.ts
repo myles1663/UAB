@@ -13,4 +13,10 @@ export declare class ElectronPlugin implements FrameworkPlugin {
     readonly name = "Electron (CDP)";
     canHandle(app: DetectedApp): boolean;
     connect(app: DetectedApp): Promise<PluginConnection>;
+    /**
+     * Find all potential CDP debug ports for an Electron app.
+     * Checks the main process AND all child processes (renderer, GPU, utility).
+     */
+    private findDebugPorts;
 }
+//# sourceMappingURL=index.d.ts.map

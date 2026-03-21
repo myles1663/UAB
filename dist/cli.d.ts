@@ -26,3 +26,4 @@
  * Profiles persist to data/uab-profiles/registry.json for cross-session knowledge.
  */
 export {};
+//# sourceMappingURL=cli.d.ts.map

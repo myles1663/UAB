@@ -8,6 +8,7 @@
  *   Priority 4: Vision + Input Injection (universal fallback)
  */
 import { WinUIAPlugin } from './plugins/win-uia/index.js';
+import { VisionPlugin } from './plugins/vision/index.js';
 export class ControlRouter {
     pluginManager;
     routes = new Map();
@@ -83,9 +84,14 @@ export class ControlRouter {
             methods.push('uab-hook');
         }
         methods.push('accessibility');
+        // Vision is always last — expensive but universal
+        if (this.visionFallback.canHandle(app)) {
+            methods.push('vision');
+        }
         return methods;
     }
     uiaFallback = new WinUIAPlugin();
+    visionFallback = new VisionPlugin();
     async tryMethod(app, method) {
         switch (method) {
             case 'uab-hook':
@@ -97,7 +103,11 @@ export class ControlRouter {
                 }
                 throw new Error('Accessibility API fallback not available for this app');
             case 'vision':
-                throw new Error('Vision fallback not yet implemented');
+                // Vision fallback — screenshot + Claude Vision API + coordinate input
+                if (this.visionFallback.canHandle(app)) {
+                    return this.visionFallback.connect(app);
+                }
+                throw new Error('Vision fallback requires ANTHROPIC_API_KEY');
             case 'direct-api':
                 throw new Error('Direct API method not yet implemented');
             default:

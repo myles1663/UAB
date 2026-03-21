@@ -16,6 +16,7 @@
  * System.Windows.Automation .NET namespace and Win32 APIs.
  */
 import { runPSJsonInteractive, runPSRawInteractive } from '../../ps-exec.js';
+import { sendKeypress as visionSendKeypress, sendHotkey as visionSendHotkey, typeText as visionTypeText, windowAction as visionWindowAction, } from '../vision/input.js';
 import { randomUUID } from 'crypto';
 // ─── UIA → UAB Type Mapping ─────────────────────────────────
 const UIA_TO_ELEMENT_TYPE = {
@@ -314,6 +315,7 @@ Add-Type -TypeDefinition '
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint d, IntPtr e);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte sc, uint f, IntPtr e);
@@ -326,7 +328,8 @@ Add-Type -TypeDefinition '
       keybd_event(0x12, 0, 0, IntPtr.Zero);
       keybd_event(0x12, 0, 0x02, IntPtr.Zero);
       if (fgT != curT) AttachThreadInput(curT, fgT, true);
-      ShowWindow(target, 9);
+      // Only restore if minimized — preserves snap layouts and split-screen
+      if (IsIconic(target)) ShowWindow(target, 9);
       SetForegroundWindow(target);
       BringWindowToTop(target);
       if (fgT != curT) AttachThreadInput(curT, fgT, false);
@@ -517,6 +520,7 @@ Add-Type -TypeDefinition '
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int n);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint d, IntPtr e);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte sc, uint f, IntPtr e);
@@ -529,7 +533,7 @@ Add-Type -TypeDefinition '
       keybd_event(0x12, 0, 0, IntPtr.Zero);
       keybd_event(0x12, 0, 0x02, IntPtr.Zero);
       if (fgT != curT) AttachThreadInput(curT, fgT, true);
-      ShowWindow(target, 9);
+      if (IsIconic(target)) ShowWindow(target, 9);
       SetForegroundWindow(target);
       BringWindowToTop(target);
       if (fgT != curT) AttachThreadInput(curT, fgT, false);
@@ -703,10 +707,26 @@ Add-Type -TypeDefinition '
     }
   }
 '
-$proc = Get-Process -Id ${pid} -ErrorAction SilentlyContinue
-if ($proc -and $proc.MainWindowHandle -ne 0) {
-  [WinFocus]::Focus($proc.MainWindowHandle) | Out-Null
-  Start-Sleep -Milliseconds 100
+# Find the window handle via UIA (more reliable than Get-Process.MainWindowHandle for Electron apps)
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+$rootEl = [System.Windows.Automation.AutomationElement]::RootElement
+$procCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
+)
+$win = $rootEl.FindFirst([System.Windows.Automation.TreeScope]::Children, $procCond)
+
+# Fallback to Get-Process.MainWindowHandle
+$hwnd = if ($win) {
+  $win.Current.NativeWindowHandle
+} else {
+  $proc = Get-Process -Id ${pid} -ErrorAction SilentlyContinue
+  if ($proc) { $proc.MainWindowHandle } else { 0 }
+}
+
+if ($hwnd -and $hwnd -ne 0) {
+  [WinFocus]::Focus([IntPtr]$hwnd) | Out-Null
+  Start-Sleep -Milliseconds 150
   [System.Windows.Forms.SendKeys]::SendWait('${escapedKey}')
   @{ success = $true } | ConvertTo-Json -Compress
 } else {
@@ -818,7 +838,7 @@ Add-Type -TypeDefinition '
   using System; using System.Runtime.InteropServices;
   public class WinMgmt { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); }
 '
-[void][WinMgmt]::ShowWindow($proc.MainWindowHandle, 6)
+[WinMgmt]::ShowWindow($proc.MainWindowHandle, 6) | Out-Null
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
         case 'maximize':
@@ -827,7 +847,7 @@ Add-Type -TypeDefinition '
   using System; using System.Runtime.InteropServices;
   public class WinMgmt { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); }
 '
-[void][WinMgmt]::ShowWindow($proc.MainWindowHandle, 3)
+[WinMgmt]::ShowWindow($proc.MainWindowHandle, 3) | Out-Null
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
         case 'restore':
@@ -836,7 +856,7 @@ Add-Type -TypeDefinition '
   using System; using System.Runtime.InteropServices;
   public class WinMgmt { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); }
 '
-[void][WinMgmt]::ShowWindow($proc.MainWindowHandle, 9)
+[WinMgmt]::ShowWindow($proc.MainWindowHandle, 9) | Out-Null
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
         case 'close':
@@ -848,7 +868,7 @@ Add-Type -TypeDefinition '
     public const uint WM_CLOSE = 0x0010;
   }
 '
-[void][WinMgmt]::SendMessage($proc.MainWindowHandle, [WinMgmt]::WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero)
+[WinMgmt]::SendMessage($proc.MainWindowHandle, [WinMgmt]::WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
         case 'move':
@@ -862,10 +882,10 @@ Add-Type -TypeDefinition '
   }
 '
 $rect = New-Object WinMgmt+RECT
-[void][WinMgmt]::GetWindowRect($proc.MainWindowHandle, [ref]$rect)
+[WinMgmt]::GetWindowRect($proc.MainWindowHandle, [ref]$rect) | Out-Null
 $w = $rect.Right - $rect.Left
 $h = $rect.Bottom - $rect.Top
-[void][WinMgmt]::MoveWindow($proc.MainWindowHandle, ${params?.x ?? 0}, ${params?.y ?? 0}, $w, $h, $true)
+[WinMgmt]::MoveWindow($proc.MainWindowHandle, ${params?.x ?? 0}, ${params?.y ?? 0}, $w, $h, $true) | Out-Null
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
         case 'resize':
@@ -879,8 +899,8 @@ Add-Type -TypeDefinition '
   }
 '
 $rect = New-Object WinMgmt+RECT
-[void][WinMgmt]::GetWindowRect($proc.MainWindowHandle, [ref]$rect)
-[void][WinMgmt]::MoveWindow($proc.MainWindowHandle, $rect.Left, $rect.Top, ${params?.width ?? 800}, ${params?.height ?? 600}, $true)
+[WinMgmt]::GetWindowRect($proc.MainWindowHandle, [ref]$rect) | Out-Null
+[WinMgmt]::MoveWindow($proc.MainWindowHandle, $rect.Left, $rect.Top, ${params?.width ?? 800}, ${params?.height ?? 600}, $true) | Out-Null
 @{ success = $true } | ConvertTo-Json -Compress`;
             break;
     }
@@ -1224,6 +1244,60 @@ if ($win) {
         };
     }
 }
+/**
+ * Find a child process of the given PID that has a visible window.
+ *
+ * Electron and other multi-process apps (Chrome, ChatGPT, VS Code, Slack, etc.)
+ * use a broker/main process that has NO window. The actual GUI lives in a
+ * renderer or GPU child process. This function finds the right child.
+ *
+ * Strategy:
+ * 1. Get all child processes of the parent PID via WMI
+ * 2. For each child, check if it has a visible UIA window
+ * 3. Return the first child PID with a window, preferring ones with actual titles
+ */
+function findChildWithWindow(parentPid) {
+    try {
+        const script = `
+$rootEl = [System.Windows.Automation.AutomationElement]::RootElement
+
+# Get all child processes
+$children = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq ${parentPid} } | Select-Object ProcessId, Name, CommandLine
+
+$results = @()
+foreach ($child in $children) {
+  $pid = $child.ProcessId
+  $procCond = New-Object System.Windows.Automation.PropertyCondition(
+    [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $pid
+  )
+  $win = $rootEl.FindFirst([System.Windows.Automation.TreeScope]::Children, $procCond)
+  if ($win -and $win.Current.BoundingRectangle.Width -gt 0) {
+    $results += @{
+      pid = $pid
+      name = $child.Name
+      title = $win.Current.Name
+      width = [math]::Round($win.Current.BoundingRectangle.Width)
+      isRenderer = ($child.CommandLine -match '--type=renderer' -or $child.CommandLine -match '--type=gpu')
+    }
+  }
+}
+
+# Prefer child with a title, then renderer type, then largest window
+$sorted = $results | Sort-Object -Property @{Expression={if($_.title){'a'}else{'z'}}}, @{Expression={if($_.isRenderer){'a'}else{'z'}}}, @{Expression={$_.width}; Ascending=$false}
+if ($sorted.Count -gt 0) {
+  $sorted[0] | ConvertTo-Json -Compress
+} else {
+  '{"pid":0}'
+}
+`;
+        const result = runUIAScript(script);
+        const childPid = result.pid;
+        return childPid > 0 ? childPid : null;
+    }
+    catch {
+        return null;
+    }
+}
 // ─── Plugin ─────────────────────────────────────────────────
 export class WinUIAPlugin {
     framework = 'wpf';
@@ -1237,6 +1311,17 @@ export class WinUIAPlugin {
     async connect(app) {
         const state = getAppStateViaUIA(app.pid);
         if (!state.window.title && state.window.size.width === 0) {
+            // The given PID has no visible window. For Electron/multi-process apps,
+            // the main process is a broker — the actual window lives in a child process.
+            // Find child processes and try each one until we find a visible window.
+            const childPid = findChildWithWindow(app.pid);
+            if (childPid) {
+                const childApp = { ...app, pid: childPid, connectionInfo: { ...app.connectionInfo, resolvedFromParent: app.pid } };
+                const childState = getAppStateViaUIA(childPid);
+                if (childState.window.title || childState.window.size.width > 0) {
+                    return new WinUIAConnection(childApp);
+                }
+            }
             throw new Error(`No accessible UI found for PID ${app.pid}. The app may not have a visible window.`);
         }
         return new WinUIAConnection(app);
@@ -1269,17 +1354,23 @@ class WinUIAConnection {
         return this.filterTree(tree, selector, 0, selector.maxDepth);
     }
     async act(elementId, action, params) {
-        // Phase 3: Handle new action types
+        // Use Vision plugin's Win32 input injection — works reliably with Electron/UWP
         switch (action) {
             case 'keypress':
-                return sendKeypress(this.app.pid, params?.key || params?.text || '');
+                return visionSendKeypress(this.app.pid, params?.key || params?.text || '');
             case 'hotkey':
-                return sendHotkey(this.app.pid, params?.keys || []);
+                return visionSendHotkey(this.app.pid, params?.keys || []);
+            case 'type':
+                // Fast bulk text input — sends entire string in one call
+                if (params?.text) {
+                    return visionTypeText(this.app.pid, params.text);
+                }
+                break; // Fall through to UIA handler if no text
             case 'minimize':
             case 'maximize':
             case 'restore':
             case 'close':
-                return windowAction(this.app.pid, action);
+                return visionWindowAction(this.app.pid, action);
             case 'move':
                 return windowAction(this.app.pid, 'move', { x: params?.x, y: params?.y });
             case 'resize':
