@@ -57,19 +57,17 @@ Future development plans for Universal App Bridge.
 - ✅ ONE codebase — desktop and server, no separate builds
 - ✅ Documentation updated with server-side usage and HTTP API reference
 
+### Phase 5 — Vision, Installer & Co-work Bridge (v1.0.0)
+- ✅ Vision fallback plugin (screenshot + coordinate-based clicking as final cascade fallback)
+- ✅ GUI installer (Electron-based one-click setup: service, Chrome extension, skill files, API key)
+- ✅ CLI installer (`node dist/cli.js install`)
+- ✅ Co-work bridge via Chrome extension relay (leverages existing trust, no new ports)
+- ✅ Electron multi-process PID resolution (prefers visible window over broker/crashpad/GPU subprocesses)
+- ✅ Confirmed Electron PID fix for: ChatGPT, VS Code, Slack, Discord, Teams, Notion, Obsidian
+
 ---
 
 ## Near-Term
-
-### Vision Fallback (Control Method 4)
-
-Add screenshot + coordinate-based clicking as the final fallback in the cascade:
-
-- Screenshot capture per PID (already implemented)
-- Element detection via image analysis (LLM vision or local model)
-- Coordinate-based click/type actions
-- Integration with the existing ControlRouter cascade
-- Coverage: Canvas-based apps, games, CAD software
 
 ### Registry Intelligence
 

@@ -15,6 +15,8 @@ UAB's security model is designed for enterprise environments where AI agents nee
 - [Network Security](#network-security)
 - [Governance Integration](#governance-integration)
 - [Responsible Disclosure](#responsible-disclosure)
+- [API Key Authentication (v1.0.0)](#api-key-authentication-v100)
+- [ELECTRON_ENABLE_REMOTE_DEBUGGING](#electron_enable_remote_debugging)
 
 ---
 
@@ -249,6 +251,7 @@ All UAB network connections are **localhost only**:
 | Protocol | Endpoint | Purpose |
 |----------|----------|---------|
 | CDP WebSocket | `ws://localhost:<port>` | Electron/Browser control |
+| HTTP Server | `http://0.0.0.0:3100` | UABServer REST API |
 | Chrome Extension | `ws://localhost:8787` | Extension bridge |
 | PowerShell | Local process | UIA/COM execution |
 
@@ -331,6 +334,29 @@ If you discover a security vulnerability in UAB, please report it responsibly:
 | **High** | Data exfiltration, unauthorized app control | Audit log bypass |
 | **Medium** | Rate limit bypass, permission misconfiguration | Race condition in permission check |
 | **Low** | Information disclosure, minor DoS | Verbose error messages expose internals |
+
+---
+
+## API Key Authentication (v1.0.0)
+
+UABServer now requires API key authentication for all POST endpoints.
+
+- The API key is generated during installation and persisted locally
+- All requests must include `X-API-Key: <key>` header
+- GET /health is exempt (used for daemon health checks)
+- The server binds to 0.0.0.0:3100 to allow VM access, but the API key prevents unauthorized use
+- The key is stored at:
+  - Windows: `%LOCALAPPDATA%\UAB Bridge\api-key`
+  - macOS: `~/Library/Application Support/UAB Bridge/api-key`
+
+---
+
+## ELECTRON_ENABLE_REMOTE_DEBUGGING
+
+The installer sets `ELECTRON_ENABLE_REMOTE_DEBUGGING=1` as a user environment variable. This enables CDP access to Electron apps for full DOM inspection. Security implications:
+- Only affects apps launched by the current user
+- CDP is bound to localhost only
+- Required for deep UI inspection of Electron apps (ChatGPT, VS Code, Slack, etc.)
 
 ---
 

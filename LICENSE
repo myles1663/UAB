@@ -6,11 +6,11 @@ License Agreement
 
 License Parameters
 
-Licensor: Myles Gabriel
+Licensor: Myles Russell Hamilton
 Licensed Work: Universal App Bridge (UAB), including all source code,
   documentation, framework plugins, the framework detection system, the
   unified API abstraction layer, the control router, and all associated
-  tooling. The Licensed Work is copyright 2026 Myles Gabriel.
+  tooling. The Licensed Work is copyright 2026 Myles Russell Hamilton.
 Change Date: Four (4) years from the date of each published version of
   the Licensed Work. For example, version 1.0.0 published on March 1, 2026
   would convert on March 1, 2030.
@@ -75,6 +75,10 @@ environments without a commercial license:
 - Personal Non-Commercial Use. Use of the Licensed Work for personal,
   non-commercial purposes by individual developers on their own machines,
   provided no revenue is generated directly or indirectly from such use.
+  Individual installations of the Licensed Work on personal machines by
+  distinct users each qualify independently as Personal Non-Commercial Use
+  and are not aggregated for purposes of the Scale Deployment threshold in
+  Section 2.2.
 
 - Academic and Research Use. Use of the Licensed Work in academic research,
   educational institutions, and non-profit organizations, provided results
@@ -118,8 +122,8 @@ Licensor:
   capabilities.
 
 - Scale Deployment. Using the Licensed Work in any product or service
-  deployed to more than five (5) unique end users or devices without a
-  commercial license, regardless of whether the product or service is
+  deployed to more than twenty-five (25) unique end users or devices without
+  a commercial license, regardless of whether the product or service is
   offered for a fee.
 
 - Enterprise Internal Use. Using the Licensed Work to provide internal

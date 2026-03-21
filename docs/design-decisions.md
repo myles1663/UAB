@@ -224,7 +224,20 @@ No compilation, no native addons, no external dependencies. The ~200ms startup l
 
 ---
 
-## 15. BSL 1.1 with Apache 2.0 Conversion
+## 15. Co-work Bridge via Chrome Extension Relay
+
+**Decision:** Route Co-work bridge traffic through the Chrome extension instead of exposing UABServer on a network port that VMs can reach directly.
+
+**Alternatives Considered:**
+- **Direct network port:** Expose UABServer on a port reachable from VMs. Simple but opens new attack surface and requires firewall changes.
+- **SSH tunnel:** Forward a port over SSH. Adds setup complexity for each VM.
+- **Shared file system:** Communicate via files on a shared drive. Too slow and unreliable for real-time control.
+
+**Rationale:** Co-work already trusts the Chrome extension. The extension runs on the host and can reach localhost:3100. This avoids opening new ports and leverages existing trust relationships. The relay path is: Co-work VM → Chrome extension (trusted) → localhost:3100 (UABServer). No new trust boundaries are crossed, no new ports are exposed, and the existing Chrome extension WebSocket infrastructure handles the communication.
+
+---
+
+## 16. BSL 1.1 with Apache 2.0 Conversion
 
 **Decision:** Business Source License 1.1, converting to Apache 2.0 four years after each release.
 

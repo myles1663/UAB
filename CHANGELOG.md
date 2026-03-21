@@ -2,6 +2,39 @@
 
 All notable changes to Universal App Bridge will be documented in this file.
 
+## [1.0.0] - 2026-03-21
+
+### Added
+
+- **GUI Installer** — Electron-based one-click setup (Windows + macOS)
+- **CLI install/uninstall/status** commands for terminal users
+- **Co-work Bridge** — Skill auto-deployment to Claude Co-work plugin directories
+- **Chrome Extension Relay** — onMessage/onMessageExternal handlers proxy UAB API calls from Co-work through the extension service worker
+- **API Key Authentication** — All POST endpoints require X-API-Key header
+- **Host Network Detection** — Auto-detects WSL/Hyper-V/vmnet adapters for VM-reachable IP
+- **`/open` endpoint** — Launch applications by name or path
+- **`/focus` endpoint** — Bring any app window to foreground
+- **`/describe` endpoint** — Screenshot + Vision AI description in one call
+- **Bulk `typeText` action** — Type full strings in one call (not per-character)
+- **DPI-aware screenshots** — SetProcessDpiAwareness for hi-res capture on 4K/ultrawide displays
+- **ELECTRON_ENABLE_REMOTE_DEBUGGING** — Set automatically at install time for CDP access
+- **Chrome extension auto-install** — CRX packing + registry/External Extensions for Chrome, Edge, Brave
+- **System service** — Auto-start on boot via Task Scheduler (Windows) or launchd (macOS)
+- **Dual-write skills** — Deploys to both Claude Code CLI plugins AND Co-work session directories
+
+### Fixed
+
+- **Electron PID resolution** — Prefers windowed process over broker/crashpad/GPU children (fixes ChatGPT, Slack, Discord, VS Code)
+- **Win32 input injection** — Uses EnumWindows+ForceForeground+SendKeys instead of broken Get-Process.MainWindowHandle (fixes Electron/UWP apps)
+- **Server binding** — Now binds to 0.0.0.0:3100 so VMs can reach the host
+- **Health endpoint** — Exempt from API key auth for daemon health checks
+
+### Changed
+
+- Server default host changed from 127.0.0.1 to 0.0.0.0 (with API key required)
+- WinUIA plugin now uses Vision plugin's input injection for reliable cross-framework typing
+- Extension manifest adds externally_connectable for claude.ai and anthropic.com
+
 ## [0.9.0] - 2026-03-03
 
 ### Added

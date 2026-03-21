@@ -1,10 +1,31 @@
 # Universal App Bridge (UAB)
 
-[![Tests](https://img.shields.io/badge/tests-172%20passing-brightgreen)]() [![Version](https://img.shields.io/badge/version-0.9.0-blue)]() [![License](https://img.shields.io/badge/license-BSL%201.1-blue)]() [![Node](https://img.shields.io/badge/node-%3E%3D18-green)]() [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)]()
+[![Tests](https://img.shields.io/badge/tests-172%20passing-brightgreen)]() [![Version](https://img.shields.io/badge/version-1.0.0-blue)]() [![License](https://img.shields.io/badge/license-BSL%201.1-blue)]() [![Node](https://img.shields.io/badge/node-%3E%3D18-green)]() [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)]()
 
 **Smart function discovery and framework-level desktop app control for AI agents.**
 
 UAB doesn't just automate apps — it **discovers**, **identifies**, **learns**, and **remembers** how to control every application on your system. The first time it sees an app, it figures out what framework it uses, which control method works best, and stores that knowledge for instant recall. Every subsequent interaction is faster and smarter.
+
+## One-Click Install
+
+UAB ships as a packaged installer. Run it once and every AI agent on the machine gets native desktop control.
+
+```bash
+# GUI installer (recommended)
+cd installer && npm install && npx electron src/main.js
+
+# CLI install (for terminal users)
+uab-bridge install
+```
+
+The installer:
+- Starts UABServer as a system service (auto-starts on boot)
+- Installs the Chrome extension for browser bridge
+- Writes skill files for Claude Co-work AND Claude Code
+- Generates an API key for authenticated access
+- Detects host network for VM accessibility
+
+Works with: Claude Co-work, Claude Code CLI, Claude Code Desktop, and any agent that can make HTTP calls.
 
 ## The Core Innovation: Smart Function Discovery
 
@@ -116,11 +137,14 @@ uab profiles
 Run UAB as a REST API so agents on other machines, in containers, or in cloud environments can control desktop apps remotely:
 
 ```bash
-# Start the server
+# Start the server (localhost only)
 uab serve --port 3100
 
-# Or with authentication
-uab serve --port 3100 --api-key my-secret-key
+# Listen on all interfaces (for VM or remote access)
+uab serve --port 3100 --host 0.0.0.0
+
+# With authentication (recommended for non-localhost)
+uab serve --port 3100 --host 0.0.0.0 --api-key my-secret-key
 ```
 
 ```bash
@@ -130,6 +154,9 @@ curl -X POST http://localhost:3100/find -d '{"query":"notepad"}'
 curl -X POST http://localhost:3100/connect -d '{"target":"notepad"}'
 curl -X POST http://localhost:3100/query -d '{"pid":1234,"selector":{"type":"button"}}'
 curl -X POST http://localhost:3100/act -d '{"pid":1234,"elementId":"btn_1","action":"click"}'
+curl -X POST http://localhost:3100/open -d '{"target":"notepad"}'
+curl -X POST http://localhost:3100/focus -d '{"pid":1234}'
+curl -X POST http://localhost:3100/describe -d '{"pid":1234}'
 
 # Health check
 curl http://localhost:3100/health
@@ -139,9 +166,9 @@ curl http://localhost:3100/health
 // Or programmatically:
 import { UABServer } from 'universal-app-bridge/server';
 
-const server = new UABServer({ port: 3100, apiKey: 'secret' });
+const server = new UABServer({ port: 3100, host: '0.0.0.0', apiKey: 'secret' });
 await server.start();
-// Clients POST JSON to /scan, /connect, /query, /act, etc.
+// Clients POST JSON to /scan, /connect, /query, /act, /open, /focus, /describe, etc.
 ```
 
 ### Environment Auto-Detection
@@ -456,6 +483,12 @@ UAB includes a Chrome Extension (Manifest V3) that connects to your running brow
 ```
 
 **Full browser control:** Tabs, cookies, localStorage, sessionStorage, navigation, JavaScript execution, screenshots — all without relaunching the browser.
+
+## Co-work Bridge
+
+UAB works seamlessly with Claude Co-work. The installer writes skill files directly into Co-work's plugin directory. Co-work reaches UABServer through Chrome's localhost access — no port forwarding, no configuration.
+
+The Chrome extension acts as a relay: Co-work → Chrome extension → localhost:3100 → UABServer → desktop apps.
 
 ## Session 0 Bridge
 

@@ -8,7 +8,7 @@ Documented results from real-world testing. Every entry below reflects actual UA
 
 - **OS:** Windows 10/11 (64-bit)
 - **Node.js:** 18+
-- **UAB Version:** 0.7.0
+- **UAB Version:** 1.0.0
 - **Test Method:** Live agent-driven operations via CLI and programmatic API
 
 ---
@@ -146,6 +146,10 @@ Documented results from real-world testing. Every entry below reflects actual UA
 
 **Framework:** Electron
 **Control Method:** ElectronPlugin — Chrome DevTools Protocol
+
+### Electron Apps (Enhanced in v1.0.0)
+
+UAB now correctly resolves multi-process Electron apps. When multiple processes share the same name (e.g., ChatGPT.exe × 5), UAB prefers the process with a visible window title over broker/crashpad/GPU subprocesses. Confirmed working: ChatGPT, VS Code, Slack, Discord, Teams, Notion, Obsidian.
 
 ### Verified Detection
 

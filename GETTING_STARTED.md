@@ -9,22 +9,44 @@ Step-by-step guide: install UAB, discover your apps, and control your first desk
 - **PowerShell** 5.1+ (included with Windows)
 - A desktop application to control (we'll use Notepad)
 
-## Step 1: Install
+## Installation
 
+### Option 1: GUI Installer (Recommended)
 ```bash
-npm install universal-app-bridge
+cd installer
+npm install
+npx electron src/main.js
 ```
+The installer handles everything: service setup, Chrome extension, skill files, API key.
 
-Or clone the repo for development:
-
+### Option 2: CLI Install
 ```bash
-git clone https://github.com/myles1663/UAB.git
-cd universal-app-bridge
 npm install
 npm run build
+node dist/cli.js install
 ```
 
-## Step 2: Verify Installation
+### Option 3: Manual Setup
+```bash
+npm install
+npm run build
+node dist/cli.js serve --host 0.0.0.0 --port 3100 --api-key YOUR_KEY
+```
+
+## Quick Start
+
+```bash
+# Check server health (no auth needed)
+curl http://localhost:3100/health
+
+# Scan for apps (auth required)
+curl -X POST http://localhost:3100/scan -H "X-API-Key: YOUR_KEY"
+
+# Connect to an app
+curl -X POST http://localhost:3100/connect -H "X-API-Key: YOUR_KEY" -H "Content-Type: application/json" -d '{"target":"notepad"}'
+```
+
+## Verify Installation
 
 ```bash
 node dist/uab/cli.js help

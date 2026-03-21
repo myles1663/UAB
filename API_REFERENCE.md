@@ -847,8 +847,8 @@ new UABServer(options?: ServerOptions)
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `port` | `number` | `3100` | Port to listen on |
-| `host` | `string` | `'127.0.0.1'` | Bind address (localhost-only by default) |
-| `apiKey` | `string` | — | If set, requires `X-API-Key` header on all requests |
+| `host` | `string` | `'0.0.0.0'` | Bind address |
+| `apiKey` | `string` | — | Required. `X-API-Key` header on all POST requests |
 | `connector` | `ConnectorOptions` | Auto-detected | Override connector settings |
 | `maxBodySize` | `number` | `1048576` | Max request body size in bytes (1MB) |
 
@@ -860,6 +860,14 @@ new UABServer(options?: ServerOptions)
 | `stop()` | `Promise<void>` | Stop and clean up |
 | `running` | `boolean` | Whether server is listening |
 | `address` | `string` | Full server URL |
+
+### Authentication
+
+All POST endpoints require the `X-API-Key` header. The API key is generated during installation and stored at:
+- Windows: `%LOCALAPPDATA%\UAB Bridge\api-key`
+- macOS: `~/Library/Application Support/UAB Bridge/api-key`
+
+GET /health is exempt from authentication.
 
 ### Endpoints
 
@@ -881,6 +889,48 @@ new UABServer(options?: ServerOptions)
 | POST | `/query` | `{ pid: number, selector?: ElementSelector }` | Search elements |
 | POST | `/act` | `{ pid: number, elementId?: string, action: string, params?: object }` | Perform action |
 | POST | `/state` | `{ pid: number }` | Get app state |
+
+#### Application Launch & Focus
+
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| POST | `/open` | `{ "target": "notepad" }` | Launch an application |
+| POST | `/focus` | `{ "pid": 1234 }` or `{ "name": "chatgpt" }` | Bring an app window to the foreground |
+| POST | `/describe` | `{ "pid": 1234 }` or `{ "name": "chatgpt" }` | Screenshot + Vision AI description (requires ANTHROPIC_API_KEY) |
+
+##### POST /open
+
+Launch an application.
+
+```json
+{ "target": "notepad" }
+```
+
+Returns: `{ "success": true, "message": "Launched notepad" }`
+
+##### POST /focus
+
+Bring an application window to the foreground.
+
+```json
+{ "pid": 1234 }
+// or
+{ "name": "chatgpt" }
+```
+
+Returns: `{ "success": true, "pid": 1234, "title": "ChatGPT" }`
+
+##### POST /describe
+
+Screenshot an application and get a text description via Vision AI (requires ANTHROPIC_API_KEY).
+
+```json
+{ "pid": 1234 }
+// or
+{ "name": "chatgpt" }
+```
+
+Returns: `{ "pid": 1234, "screenshot": "path/to/file.png", "description": "..." }`
 
 #### Keyboard, Window & Screenshot
 

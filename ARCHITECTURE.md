@@ -16,6 +16,9 @@
 - [Production Hardening](#production-hardening)
 - [Session Bridge](#session-bridge)
 - [Desktop + Server Dual-Mode](#desktop--server-dual-mode)
+- [Co-work Bridge Architecture](#co-work-bridge-architecture)
+- [Installer Architecture](#installer-architecture)
+- [Input Injection](#input-injection)
 
 ---
 
@@ -925,7 +928,7 @@ Session 0                        Session 1
 
 ## Desktop + Server Dual-Mode
 
-UAB v0.8.0 introduces automatic environment detection. ONE codebase works in desktop, server, and container contexts without configuration changes.
+UAB v1.0.0 introduces automatic environment detection. ONE codebase works in desktop, server, and container contexts without configuration changes.
 
 ### Architecture
 
@@ -998,6 +1001,49 @@ UAB v0.8.0 introduces automatic environment detection. ONE codebase works in des
 | Remote agent via SSH | HTTP Server | Server (auto) |
 | CI/CD pipeline | CLI | Server (auto) |
 | Docker container | HTTP Server | Container (auto) |
+
+---
+
+## Co-work Bridge Architecture
+
+```
+Co-work (Linux VM) → Chrome extension → localhost:3100 → UABServer → Desktop Apps
+```
+
+Co-work runs in an isolated Linux VM and cannot reach the host's localhost directly. The Chrome extension acts as a relay:
+
+1. UAB installs a SKILL.md into Co-work's plugin directory at `%APPDATA%/Claude/local-agent-mode-sessions/*/cowork_plugins/`
+2. Co-work reads the skill and knows to call UAB via Chrome's localhost access
+3. The Chrome extension service worker has `onMessage` and `onMessageExternal` handlers that proxy requests to `localhost:3100`
+4. UABServer processes the request and returns the result through the same path
+
+The same skill is also written to Claude Code CLI's plugin directory at `~/.claude/plugins/`.
+
+---
+
+## Installer Architecture
+
+The installer (GUI or CLI) performs these steps:
+1. Detects host gateway IP (WSL/Hyper-V/vmnet adapter)
+2. Generates a persistent API key
+3. Creates a system service (Task Scheduler on Windows, launchd on macOS) bound to 0.0.0.0:3100
+4. Packs and registers the Chrome extension (.crx + registry keys)
+5. Writes SKILL.md to ALL agent locations (CLI + Co-work)
+6. Sets ELECTRON_ENABLE_REMOTE_DEBUGGING=1 for CDP access to Electron apps
+7. Registers the plugin in Claude Code settings
+
+---
+
+## Input Injection
+
+UAB uses Win32 API calls via PowerShell for input injection:
+- `EnumWindows` + `FindByPid` to locate the correct window handle
+- `ForceForeground` with thread attachment for reliable window activation
+- `SendKeys` for keyboard input (both single keys and bulk text)
+- `mouse_event` for click/hover at absolute coordinates
+- `PrintWindow` with DPI awareness for hi-res screenshot capture
+
+This approach works with ALL window types including Electron, UWP, and Win32 apps.
 
 ---
 
