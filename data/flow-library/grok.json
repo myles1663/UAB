@@ -6,7 +6,7 @@
   "target_flow": "Send and read messages in Grok desktop app (via WebCatalog)",
   "input_method": "tab_to_input_then_clipboard_paste",
   "focus_method": "focus_endpoint",
-  "read_method": "screenshot",
+  "read_method": "copy_then_screenshot_fallback",
   "sidebar_variants": {
     "expanded": "2 Tabs reach input (Tab→Attach, Tab→Input)",
     "collapsed": "More Tabs needed — collapsed sidebar icons are in Tab order. May need 5-8 Tabs."
@@ -25,14 +25,15 @@
     {"step": 10, "action": "screenshot_confirm", "params": {"pid": "{pid}"}, "note": "Verify text appeared in input before sending", "timeout_ms": 500},
     {"step": 11, "action": "keypress", "params": {"pid": "{pid}", "key": "Enter"}, "note": "Send the message"},
     {"step": 12, "action": "wait", "duration_ms": 15000, "note": "Wait for Grok to respond"},
-    {"step": 13, "action": "screenshot", "params": {"pid": "{pid}"}, "note": "Screenshot to read response"}
+    {"step": 13, "action": "read_response", "method": "copy_first", "note": "Try /copy first — returns full text including scrolled content. If /copy returns empty text, fall back to screenshot. Grok's Ctrl+A may not work in all states but is worth trying first since screenshot misses scrolled content."}
   ],
   "known_issues": [
     "Tab count depends on sidebar state — expanded (2 Tabs) vs collapsed (5-8 Tabs)",
     "The Attach button is the LANDMARK — input is always the next Tab stop after Attach highlights",
     "Input field requires a keystroke to activate cursor before paste works",
     "SendKeys strips spaces in Grok — must use clipboard paste",
-    "Ctrl+A selects nothing in Grok chat area — use screenshot to read responses, not /copy",
+    "Ctrl+A selects nothing in Grok chat area — /copy returns empty, screenshot is required for reading responses",
+    "VERIFIED: /copy returns empty text on Grok (2026-03-22) — Ctrl+A does not work in Grok's WebCatalog wrapper",
     "Set-Clipboard via cmd.exe does not affect desktop session — must use runPSRawInteractive",
     "WebCatalog wrapper adds extra Electron chrome around Grok"
   ],

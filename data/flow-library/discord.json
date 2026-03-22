@@ -15,7 +15,7 @@
     {"step": 5, "action": "screenshot_confirm", "params": {"pid": "{pid}"}, "timeout_ms": 500},
     {"step": 6, "action": "keypress", "params": {"pid": "{pid}", "key": "Enter"}, "note": "Send message"},
     {"step": 7, "action": "wait", "duration_ms": 2000},
-    {"step": 8, "action": "copy", "params": {"pid": "{pid}"}, "note": "Read channel content"}
+    {"step": 8, "action": "read_response", "method": "copy_first", "note": "Try /copy first — returns full text including scrolled content. If empty, fall back to screenshot."}
   ],
   "known_issues": [
     "Discord has many sub-processes — UAB picks windowed one",

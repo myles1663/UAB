@@ -4,7 +4,7 @@
     "Electron": {
       "input_method": "click_then_clipboard_paste",
       "focus_method": "focus_endpoint",
-      "read_method": "screenshot",
+      "read_method": "copy_then_screenshot_fallback",
       "default_plan": [
         {"step": 1, "action": "connect", "note": "Connect by name or PID"},
         {"step": 2, "action": "focus", "note": "Bring to front"},
