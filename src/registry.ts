@@ -201,7 +201,8 @@ export class AppRegistry {
     return key ? this.apps.get(key) : undefined;
   }
 
-  /** Find profiles by name (case-insensitive substring match). */
+  /** Find profiles by name (case-insensitive substring match).
+   *  For multi-process apps (Electron), prefers processes with a window title. */
   byName(name: string): AppProfile[] {
     const lower = name.toLowerCase();
     const results: AppProfile[] = [];
@@ -212,6 +213,11 @@ export class AppRegistry {
       ) {
         results.push(profile);
       }
+    }
+    // If multiple matches, prefer those with a window title
+    if (results.length > 1) {
+      const withWindow = results.filter(r => r.windowTitle && r.windowTitle.length > 0);
+      if (withWindow.length > 0) return withWindow;
     }
     return results;
   }
