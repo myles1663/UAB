@@ -20,7 +20,7 @@
     {"step": 5, "action": "keypress", "params": {"pid": "{pid}", "key": "a"}, "note": "Type any single character to ACTIVATE the cursor — input is selected but cursor not blinking until a keystroke"},
     {"step": 6, "action": "hotkey", "params": {"pid": "{pid}", "keys": ["ctrl", "a"]}, "note": "Select all to highlight the throwaway character"},
     {"step": 7, "action": "keypress", "params": {"pid": "{pid}", "key": "Backspace"}, "note": "Delete the throwaway character — input is now active and empty"},
-    {"step": 8, "action": "set_clipboard", "params": {"text": "{message}"}, "note": "Set clipboard via interactive PowerShell (runPSRawInteractive with System.Windows.Forms.Clipboard). Do NOT use cmd.exe Set-Clipboard — it runs in wrong session."},
+    {"step": 8, "action": "clear_then_set_clipboard", "params": {"text": "{message}"}, "note": "ALWAYS clear clipboard first, then set new text. Use interactive PowerShell: runPSRawInteractive('Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear(); [System.Windows.Forms.Clipboard]::SetText(\"YOUR TEXT\")). If old clipboard content gets pasted, this step was skipped."},
     {"step": 9, "action": "hotkey", "params": {"pid": "{pid}", "keys": ["ctrl", "v"]}, "note": "Paste message from clipboard"},
     {"step": 10, "action": "screenshot_confirm", "params": {"pid": "{pid}"}, "note": "Verify text appeared in input before sending", "timeout_ms": 500},
     {"step": 11, "action": "keypress", "params": {"pid": "{pid}", "key": "Enter"}, "note": "Send the message"},
