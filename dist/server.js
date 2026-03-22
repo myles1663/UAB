@@ -112,23 +112,21 @@ export class UABServer {
             });
             return;
         }
+        // GET /info is public (agents need to discover endpoints)
+        if (req.method === 'GET' && path === '/info') {
+            this.sendJSON(res, 200, {
+                name: 'Universal App Bridge Server',
+                version: '1.0.0',
+                environment: this.environment,
+                endpoints: [...this.routes.keys()].map(r => `POST ${r}`),
+            });
+            return;
+        }
         // Auth check (all other endpoints)
         if (this.opts.apiKey) {
             const provided = req.headers['x-api-key'];
             if (provided !== this.opts.apiKey) {
                 this.sendError(res, 401, 'Invalid or missing API key');
-                return;
-            }
-        }
-        // GET /info (auth required)
-        if (req.method === 'GET') {
-            if (path === '/info') {
-                this.sendJSON(res, 200, {
-                    name: 'Universal App Bridge Server',
-                    version: '0.8.0',
-                    environment: this.environment,
-                    endpoints: [...this.routes.keys()].map(r => `POST ${r}`),
-                });
                 return;
             }
         }

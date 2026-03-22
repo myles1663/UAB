@@ -68,10 +68,18 @@ export class AppRegistry {
         }
     }
     // ─── Registration ─────────────────────────────────────────────
-    /** Register a detected app into the registry. Returns the profile. */
+    /** Register a detected app into the registry. Returns the profile.
+     *  For multi-process apps (same exe name), keeps the entry with a window title. */
     register(app) {
         const key = this.keyFor(app);
         const existing = this.apps.get(key);
+        // Don't overwrite a windowed process with a windowless one (Electron broker/GPU fix)
+        if (existing && existing.windowTitle && existing.windowTitle.length > 0
+            && (!app.windowTitle || app.windowTitle.length === 0)) {
+            // Still index this PID so byPid lookups work
+            this.pidIndex.set(app.pid, key);
+            return existing;
+        }
         const profile = {
             executable: key,
             name: app.name,
@@ -138,7 +146,8 @@ export class AppRegistry {
         const key = this.pidIndex.get(pid);
         return key ? this.apps.get(key) : undefined;
     }
-    /** Find profiles by name (case-insensitive substring match). */
+    /** Find profiles by name (case-insensitive substring match).
+     *  For multi-process apps (Electron), prefers processes with a window title. */
     byName(name) {
         const lower = name.toLowerCase();
         const results = [];
@@ -147,6 +156,12 @@ export class AppRegistry {
                 profile.executable.includes(lower)) {
                 results.push(profile);
             }
+        }
+        // If multiple matches, prefer those with a window title
+        if (results.length > 1) {
+            const withWindow = results.filter(r => r.windowTitle && r.windowTitle.length > 0);
+            if (withWindow.length > 0)
+                return withWindow;
         }
         return results;
     }

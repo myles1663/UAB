@@ -61,7 +61,8 @@ export declare class AppRegistry {
     /** Persist current registry to JSON file. */
     save(): void;
     private maybeSave;
-    /** Register a detected app into the registry. Returns the profile. */
+    /** Register a detected app into the registry. Returns the profile.
+     *  For multi-process apps (same exe name), keeps the entry with a window title. */
     register(app: DetectedApp): AppProfile;
     /** Register multiple detected apps in bulk. Single save at the end. */
     registerAll(apps: DetectedApp[]): AppProfile[];
@@ -71,7 +72,8 @@ export declare class AppRegistry {
     remove(executable: string): boolean;
     /** Find profile by PID. O(1). */
     byPid(pid: number): AppProfile | undefined;
-    /** Find profiles by name (case-insensitive substring match). */
+    /** Find profiles by name (case-insensitive substring match).
+     *  For multi-process apps (Electron), prefers processes with a window title. */
     byName(name: string): AppProfile[];
     /** Find profiles by framework type. */
     byFramework(framework: FrameworkType): AppProfile[];
@@ -90,3 +92,4 @@ export declare class AppRegistry {
     /** Convert a registry profile back to DetectedApp format (for existing APIs). */
     toDetectedApp(profile: AppProfile): DetectedApp;
 }
+//# sourceMappingURL=registry.d.ts.map
