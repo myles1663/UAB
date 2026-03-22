@@ -237,7 +237,20 @@ No compilation, no native addons, no external dependencies. The ~200ms startup l
 
 ---
 
-## 16. BSL 1.1 with Apache 2.0 Conversion
+## 17. Recursive Application Bridge (Flow Library)
+
+**Decision**: Store learned app interaction sequences in a JSON library and serve them via API endpoints.
+
+**Alternatives considered**:
+- Hardcode sequences in the skill file → doesn't scale, requires skill updates for every new app
+- Let agents figure it out every time → slow, unreliable, wastes tokens re-reasoning known solutions
+- Use a database with vector search → overengineered for <100 flows, adds complexity
+
+**Rationale**: Each app has unique UI quirks (Tab counts, input activation, clipboard vs SendKeys). These are discovered once through real interaction and stored permanently. The flow library creates a recursive improvement loop where the system gets better at controlling apps the more it controls them. This is the key architectural differentiator — UAB builds procedural memory from interaction, unlike other automation tools that require manual configuration per app.
+
+---
+
+## 18. BSL 1.1 with Apache 2.0 Conversion
 
 **Decision:** Business Source License 1.1, converting to Apache 2.0 four years after each release.
 

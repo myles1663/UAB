@@ -21,6 +21,10 @@ All notable changes to Universal App Bridge will be documented in this file.
 - **Chrome extension auto-install** — CRX packing + registry/External Extensions for Chrome, Edge, Brave
 - **System service** — Auto-start on boot via Task Scheduler (Windows) or launchd (macOS)
 - **Dual-write skills** — Deploys to both Claude Code CLI plugins AND Co-work session directories
+- **Flow Library** — Recursive application bridge with pre-built interaction sequences per app. `GET /flow/{appname}` returns exact step sequences. Seeded with ChatGPT, Grok, Notepad, Excel, Slack, Discord flows. Framework-based defaults for unknown apps.
+- **`GET /flow/list`** — List all available flows (no auth required)
+- **`GET /flow/{appname}`** — Get pre-built interaction sequence (no auth required)
+- **`POST /flow`** — Save new or updated flow (auth required)
 
 ### Fixed
 

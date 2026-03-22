@@ -954,6 +954,124 @@ Returns: `{ "pid": 1234, "screenshot": "path/to/file.png", "description": "..." 
 
 ---
 
+## Flow Library
+
+The flow library provides pre-built interaction sequences for known applications. These endpoints allow agents to retrieve and contribute learned app control sequences.
+
+### `GET /flow/list`
+
+List all available flows. **No authentication required.**
+
+**Request:**
+```bash
+curl -s http://localhost:3100/flow/list
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "flows": [
+    { "app_name": "ChatGPT", "app_framework": "Electron", "version": "1.0" },
+    { "app_name": "Grok", "app_framework": "Electron", "version": "1.2" },
+    { "app_name": "Notepad", "app_framework": "Win32", "version": "1.0" },
+    { "app_name": "Excel", "app_framework": "Office", "version": "1.1" },
+    { "app_name": "Slack", "app_framework": "Electron", "version": "1.0" },
+    { "app_name": "Discord", "app_framework": "Electron", "version": "1.0" }
+  ]
+}
+```
+
+### `GET /flow/{appname}`
+
+Get the pre-built interaction sequence for a specific app. **No authentication required.**
+
+**Request:**
+```bash
+curl -s http://localhost:3100/flow/grok
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "flow": {
+    "app_name": "Grok",
+    "app_framework": "Electron",
+    "input_method": "double_tab_activate_then_clipboard_paste",
+    "navigation_plan": [
+      { "step": 1, "action": "focus" },
+      { "step": 2, "action": "keypress", "key": "Tab" },
+      { "step": 3, "action": "keypress", "key": "Tab" },
+      { "step": 4, "action": "activate_input" },
+      { "step": 5, "action": "clipboard_paste", "text": "{user_input}" },
+      { "step": 6, "action": "keypress", "key": "Enter" }
+    ],
+    "known_issues": ["Input field requires Tab activation before paste"],
+    "version": "1.2"
+  }
+}
+```
+
+If no app-specific flow exists, UAB returns a framework-based default:
+
+```json
+{
+  "success": true,
+  "flow": {
+    "app_name": "unknown-electron-app",
+    "app_framework": "Electron",
+    "input_method": "default_electron",
+    "navigation_plan": [
+      { "step": 1, "action": "focus" },
+      { "step": 2, "action": "keypress", "key": "Tab" },
+      { "step": 3, "action": "type", "text": "{user_input}" },
+      { "step": 4, "action": "keypress", "key": "Enter" }
+    ],
+    "known_issues": [],
+    "version": "0.1",
+    "is_default": true
+  }
+}
+```
+
+### `POST /flow`
+
+Save a new or updated flow after discovering a working interaction sequence. **Authentication required** (`X-API-Key` header).
+
+**Request:**
+```bash
+curl -s -X POST http://localhost:3100/flow \
+  -H "X-API-Key: YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_name": "MyApp",
+    "app_framework": "Electron",
+    "input_method": "single_tab_then_type",
+    "navigation_plan": [
+      {"step": 1, "action": "focus"},
+      {"step": 2, "action": "keypress", "key": "Tab"},
+      {"step": 3, "action": "type", "text": "{user_input}"},
+      {"step": 4, "action": "keypress", "key": "Enter"}
+    ],
+    "known_issues": [],
+    "version": "1.0"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Flow saved for MyApp",
+  "path": "data/flow-library/myapp.json"
+}
+```
+
+Flow files are stored in `data/flow-library/`. Framework defaults are in `data/flow-library/_defaults.json`.
+
+---
+
 ## Environment Detection
 
 **Import:** `import { detectEnvironment, getDefaults, env } from 'universal-app-bridge/environment'`

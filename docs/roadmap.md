@@ -64,6 +64,7 @@ Future development plans for Universal App Bridge.
 - ✅ Co-work bridge via Chrome extension relay (leverages existing trust, no new ports)
 - ✅ Electron multi-process PID resolution (prefers visible window over broker/crashpad/GPU subprocesses)
 - ✅ Confirmed Electron PID fix for: ChatGPT, VS Code, Slack, Discord, Teams, Notion, Obsidian
+- ✅ Flow Library with recursive application bridge pattern — per-app interaction sequences with framework defaults
 
 ---
 

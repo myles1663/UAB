@@ -490,6 +490,21 @@ UAB works seamlessly with Claude Co-work. The installer writes skill files direc
 
 The Chrome extension acts as a relay: Co-work → Chrome extension → localhost:3100 → UABServer → desktop apps.
 
+### Recursive Application Bridge
+
+UAB doesn't just control apps — it learns how to control them better with every interaction.
+
+The **Flow Library** (`data/flow-library/`) stores pre-built interaction sequences for every app UAB has successfully controlled. Each flow captures the exact steps, input method, and known quirks discovered through real-world testing:
+
+- **ChatGPT**: 1 Tab → type → Enter
+- **Grok**: 2 Tabs → keystroke activate → clipboard paste → Enter
+- **Excel**: COM API methods (no UI automation needed)
+- **Notepad**: Direct SendKeys type
+
+When an agent encounters a new app, it checks `GET /flow/{appname}`. If a flow exists, the agent follows it mechanically — zero exploration, zero guessing. If no flow exists, UAB provides a framework-based default, and the agent saves the working sequence via `POST /flow` after success.
+
+This creates a recursive improvement loop: **Attempt → Verify → Learn → Store → Next attempt is instant.** Unlike human muscle memory that degrades over time, the flow library is permanent, exact, and shared across every agent connected to UAB.
+
 ## Session 0 Bridge
 
 UAB works even when running in Session 0 (SSH, Windows Services). It automatically detects Session 0 and routes PowerShell through the Task Scheduler with `/IT` flag to bridge to the interactive desktop session.

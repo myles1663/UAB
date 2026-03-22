@@ -236,6 +236,25 @@ reg query "HKCU\Environment" /v ELECTRON_ENABLE_REMOTE_DEBUGGING
 
 When CDP is available, UAB uses it automatically. When not, it falls back to UIA + input injection.
 
+### Flow Library
+
+View available flows:
+```bash
+curl -s http://localhost:3100/flow/list
+```
+
+Get a specific app's flow:
+```bash
+curl -s http://localhost:3100/flow/grok
+```
+
+Save a new flow after discovering a working sequence:
+```bash
+curl -s -X POST http://localhost:3100/flow -H "X-API-Key: YOUR_KEY" -H "Content-Type: application/json" -d '{"app_name":"myapp", "input_method":"...", "navigation_plan":[...]}'
+```
+
+Flow files are stored in `data/flow-library/`. To add flows for a new app, create a JSON file there or use the POST endpoint.
+
 ## Maintenance
 
 ### Update UAB

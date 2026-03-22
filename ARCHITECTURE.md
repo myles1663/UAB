@@ -1047,6 +1047,43 @@ This approach works with ALL window types including Electron, UWP, and Win32 app
 
 ---
 
+### Recursive Application Bridge (Flow Library)
+
+The flow library is UAB's procedural memory system. It transforms trial-and-error app interaction into deterministic execution.
+
+**Storage**: `data/flow-library/{appname}.json` — one file per application.
+
+**Flow format**:
+```json
+{
+  "app_name": "Grok",
+  "app_framework": "Electron",
+  "input_method": "double_tab_activate_then_clipboard_paste",
+  "navigation_plan": [
+    {"step": 1, "action": "focus"},
+    {"step": 2, "action": "keypress", "key": "Tab"},
+    ...
+  ],
+  "known_issues": ["..."],
+  "version": "1.2"
+}
+```
+
+**Endpoints**:
+- `GET /flow/list` — all available flows (no auth)
+- `GET /flow/{appname}` — pre-built sequence (no auth)
+- `POST /flow` — save new/updated flow (auth required)
+
+**Default generation**: When no app-specific flow exists, UAB generates a default based on the detected framework type (Electron, Win32, Office, Qt). Defaults are stored in `_defaults.json`.
+
+**Recursive improvement**: Each interaction either confirms the existing flow or generates a correction. Failed sequences trigger analysis and version bumps. The library grows with use and the error rate approaches zero over time.
+
+**Cross-agent knowledge sharing**: Any agent connected to UAB inherits the entire flow library. One agent's discovery benefits all agents on all machines where the library is deployed.
+
+**Patent relevance**: The recursive application bridge — where the system builds procedural memory from interaction and shares it deterministically across agents — represents a novel capability in the agent-to-application control space. This transforms UAB from an automation tool into an agent operating system with learned procedural knowledge.
+
+---
+
 ## Key Design Decisions
 
 See [docs/design-decisions.md](docs/design-decisions.md) for the full rationale behind:
