@@ -1,0 +1,32 @@
+{
+  "skill_name": "grok_chat_flow",
+  "app_name": "Grok",
+  "executable": "grok.exe",
+  "app_framework": "Electron",
+  "target_flow": "Send and read messages in Grok desktop app (via WebCatalog)",
+  "input_method": "click_then_clipboard_paste",
+  "focus_method": "focus_endpoint",
+  "read_method": "screenshot",
+  "navigation_plan": [
+    {"step": 1, "action": "connect", "params": {"target": "grok"}, "note": "Returns pid"},
+    {"step": 2, "action": "focus", "params": {"pid": "{pid}"}, "note": "Bring window to front"},
+    {"step": 3, "action": "get_state", "params": {"pid": "{pid}"}, "note": "Get window position and size for coordinate calculation"},
+    {"step": 4, "action": "click_input", "method": "coordinate_click", "position": {"x_percent": 0.5, "y_offset_from_bottom": 40}, "note": "Click on the input field at bottom center of window"},
+    {"step": 5, "action": "set_clipboard", "params": {"text": "{message}"}, "note": "Set clipboard via interactive PowerShell session — must use runPSRawInteractive, not cmd.exe Set-Clipboard"},
+    {"step": 6, "action": "hotkey", "params": {"pid": "{pid}", "keys": ["ctrl", "v"]}, "note": "Paste from clipboard"},
+    {"step": 7, "action": "screenshot_confirm", "params": {"pid": "{pid}"}, "note": "Verify text appeared in input before sending", "timeout_ms": 500},
+    {"step": 8, "action": "keypress", "params": {"pid": "{pid}", "key": "Enter"}, "note": "Send the message"},
+    {"step": 9, "action": "wait", "duration_ms": 15000, "note": "Wait for Grok to finish responding — Grok is slower than ChatGPT"},
+    {"step": 10, "action": "screenshot", "params": {"pid": "{pid}"}, "note": "Screenshot to read response — Ctrl+A does NOT work in Grok"}
+  ],
+  "known_issues": [
+    "Tab key goes to attachment button, NOT the input field — never use Tab",
+    "SendKeys strips spaces — must use clipboard paste instead",
+    "Ctrl+A selects nothing in Grok — cannot use /copy endpoint, use screenshot instead",
+    "Set-Clipboard via cmd.exe does not affect desktop session — must use runPSRawInteractive with System.Windows.Forms.Clipboard",
+    "WebCatalog wrapper — Grok runs inside WebCatalog which adds extra chrome"
+  ],
+  "risk_tier": "T1",
+  "version": "1.2",
+  "last_verified": "2026-03-22"
+}

@@ -154,6 +154,66 @@ export class UABServer {
       return;
     }
 
+    // GET /flow/{appname} — lookup pre-built flow for an app (public, no auth)
+    if (req.method === 'GET' && path.startsWith('/flow/')) {
+      const appName = path.substring(6).toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      const { existsSync: flowExists, readFileSync: flowRead, readdirSync: flowDir } = await import('fs');
+      const { resolve: flowResolve, join: flowJoin } = await import('path');
+      const libDir = flowResolve('data/flow-library');
+
+      if (appName === '' || appName === 'list') {
+        // List all available flows
+        try {
+          const files = flowDir(libDir).filter((f: string) => f.endsWith('.json') && !f.startsWith('_'));
+          const flows = files.map((f: string) => {
+            const data = JSON.parse(flowRead(flowJoin(libDir, f), 'utf-8'));
+            return { app: f.replace('.json', ''), name: data.skill_name, framework: data.app_framework, version: data.version };
+          });
+          this.sendJSON(res, 200, { flows });
+        } catch {
+          this.sendJSON(res, 200, { flows: [] });
+        }
+        return;
+      }
+
+      // Look for exact match first, then fuzzy match
+      let flowPath = flowJoin(libDir, `${appName}.json`);
+      if (!flowExists(flowPath)) {
+        // Fuzzy: check if any file contains the app name
+        try {
+          const files = flowDir(libDir).filter((f: string) => f.endsWith('.json') && !f.startsWith('_'));
+          const match = files.find((f: string) => f.includes(appName) || appName.includes(f.replace('.json', '')));
+          if (match) flowPath = flowJoin(libDir, match);
+        } catch {}
+      }
+
+      if (flowExists(flowPath)) {
+        try {
+          const flow = JSON.parse(flowRead(flowPath, 'utf-8'));
+          this.sendJSON(res, 200, flow);
+        } catch {
+          this.sendError(res, 500, 'Failed to parse flow file');
+        }
+      } else {
+        // Return default based on framework if we can detect it
+        const defaultsPath = flowJoin(libDir, '_defaults.json');
+        if (flowExists(defaultsPath)) {
+          const defaults = JSON.parse(flowRead(defaultsPath, 'utf-8'));
+          this.sendJSON(res, 200, {
+            skill_name: `${appName}_default_flow`,
+            app_name: appName,
+            app_framework: 'unknown',
+            target_flow: `Default interaction flow for ${appName}`,
+            ...defaults.frameworks['unknown'],
+            note: 'No app-specific flow found. Using default template. After successful interaction, save the working flow via POST /flow.',
+          });
+        } else {
+          this.sendError(res, 404, `No flow found for "${appName}". GET /flow/list for available flows.`);
+        }
+      }
+      return;
+    }
+
     // GET /info is public (agents need to discover endpoints)
     if (req.method === 'GET' && path === '/info') {
       this.sendJSON(res, 200, {
@@ -397,6 +457,21 @@ export class UABServer {
       if (!conn.isConnected(pid)) await conn.connect(pid);
       const result = await conn.screenshot(pid, body.outputPath as string);
       return { pid, ...result };
+    });
+
+    // Save/update a flow in the library
+    this.routes.set('/flow', async (body) => {
+      const appName = (body.app_name as string || body.skill_name as string || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      if (!appName) throw new Error('Missing required field: app_name');
+
+      const { writeFileSync, mkdirSync } = await import('fs');
+      const { resolve, join } = await import('path');
+      const libDir = resolve('data/flow-library');
+      mkdirSync(libDir, { recursive: true });
+
+      const flowPath = join(libDir, `${appName}.json`);
+      writeFileSync(flowPath, JSON.stringify(body, null, 2), 'utf-8');
+      return { success: true, message: `Flow saved for ${appName}`, path: flowPath };
     });
 
     // Copy — select all + copy from a window, return clipboard text
