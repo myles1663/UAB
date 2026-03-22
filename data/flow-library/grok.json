@@ -4,18 +4,23 @@
   "executable": "grok.exe",
   "app_framework": "Electron",
   "target_flow": "Send and read messages in Grok desktop app (via WebCatalog)",
-  "input_method": "double_tab_activate_then_clipboard_paste",
+  "input_method": "tab_to_input_then_clipboard_paste",
   "focus_method": "focus_endpoint",
   "read_method": "screenshot",
+  "sidebar_variants": {
+    "expanded": "2 Tabs reach input (Tab→Attach, Tab→Input)",
+    "collapsed": "More Tabs needed — collapsed sidebar icons are in Tab order. May need 5-8 Tabs."
+  },
+  "recommended_approach": "Use Escape first to reset focus. Then Tab repeatedly. After each Tab, the agent should check: did the Attach button highlight? If yes, one more Tab reaches input. The Attach button appearing is the landmark — input is always the next Tab stop after Attach.",
   "navigation_plan": [
     {"step": 1, "action": "connect", "params": {"target": "grok"}, "note": "Returns pid"},
     {"step": 2, "action": "focus", "params": {"pid": "{pid}"}, "note": "Bring window to front without resizing"},
-    {"step": 3, "action": "keypress", "params": {"pid": "{pid}", "key": "Tab"}, "note": "First Tab — lands on Attach button"},
-    {"step": 4, "action": "keypress", "params": {"pid": "{pid}", "key": "Tab"}, "note": "Second Tab — lands on input field but cursor NOT active yet"},
-    {"step": 5, "action": "keypress", "params": {"pid": "{pid}", "key": "a"}, "note": "Type any single character to ACTIVATE the cursor — this is required"},
+    {"step": 3, "action": "keypress", "params": {"pid": "{pid}", "key": "Escape"}, "note": "Reset focus — close any open menus or popups"},
+    {"step": 4, "action": "tab_to_input", "method": "repeated_tab", "note": "Press Tab repeatedly until reaching the input field. The input is always ONE Tab after the Attach button. Landmark: when Attach highlights, the next Tab is the input. Sidebar expanded = 2 Tabs total. Sidebar collapsed = more Tabs. Max 10 Tabs before giving up."},
+    {"step": 5, "action": "keypress", "params": {"pid": "{pid}", "key": "a"}, "note": "Type any single character to ACTIVATE the cursor — input is selected but cursor not blinking until a keystroke"},
     {"step": 6, "action": "hotkey", "params": {"pid": "{pid}", "keys": ["ctrl", "a"]}, "note": "Select all to highlight the throwaway character"},
     {"step": 7, "action": "keypress", "params": {"pid": "{pid}", "key": "Backspace"}, "note": "Delete the throwaway character — input is now active and empty"},
-    {"step": 8, "action": "set_clipboard", "params": {"text": "{message}"}, "note": "Set clipboard via interactive PowerShell (runPSRawInteractive with System.Windows.Forms.Clipboard)"},
+    {"step": 8, "action": "set_clipboard", "params": {"text": "{message}"}, "note": "Set clipboard via interactive PowerShell (runPSRawInteractive with System.Windows.Forms.Clipboard). Do NOT use cmd.exe Set-Clipboard — it runs in wrong session."},
     {"step": 9, "action": "hotkey", "params": {"pid": "{pid}", "keys": ["ctrl", "v"]}, "note": "Paste message from clipboard"},
     {"step": 10, "action": "screenshot_confirm", "params": {"pid": "{pid}"}, "note": "Verify text appeared in input before sending", "timeout_ms": 500},
     {"step": 11, "action": "keypress", "params": {"pid": "{pid}", "key": "Enter"}, "note": "Send the message"},
@@ -23,15 +28,15 @@
     {"step": 13, "action": "screenshot", "params": {"pid": "{pid}"}, "note": "Screenshot to read response"}
   ],
   "known_issues": [
-    "First Tab hits Attach button — need TWO Tabs to reach input field",
-    "Second Tab reaches input but does NOT activate cursor — must type a character first to engage it",
-    "Paste only works after cursor is activated by a keystroke",
-    "SendKeys strips spaces in Grok — must use clipboard paste instead of type action",
-    "Ctrl+A selects nothing in Grok's chat area — cannot use /copy endpoint for reading, use screenshot",
+    "Tab count depends on sidebar state — expanded (2 Tabs) vs collapsed (5-8 Tabs)",
+    "The Attach button is the LANDMARK — input is always the next Tab stop after Attach highlights",
+    "Input field requires a keystroke to activate cursor before paste works",
+    "SendKeys strips spaces in Grok — must use clipboard paste",
+    "Ctrl+A selects nothing in Grok chat area — use screenshot to read responses, not /copy",
     "Set-Clipboard via cmd.exe does not affect desktop session — must use runPSRawInteractive",
-    "WebCatalog wrapper — Grok runs inside WebCatalog which adds extra Electron chrome"
+    "WebCatalog wrapper adds extra Electron chrome around Grok"
   ],
   "risk_tier": "T1",
-  "version": "1.2",
+  "version": "2.0",
   "last_verified": "2026-03-22"
 }
