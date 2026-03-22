@@ -459,6 +459,173 @@ export class UABServer {
       return { pid, ...result };
     });
 
+    // Deep query — find ALL named/actionable elements in an app via UIA FindAll
+    this.routes.set('/deep-query', async (body) => {
+      const pid = body.pid as number;
+      const nameFilter = body.name as string || '';
+      const typeFilter = body.type as string || '';
+      if (!pid) throw new Error('Missing required field: pid');
+
+      const { runPSRawInteractive } = await import('./ps-exec.js');
+      const script = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+
+$rootEl = [System.Windows.Automation.AutomationElement]::RootElement
+$procCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
+)
+$win = $rootEl.FindFirst([System.Windows.Automation.TreeScope]::Children, $procCond)
+if (-not $win) { Write-Output '[]'; exit }
+
+$allCond = [System.Windows.Automation.Condition]::TrueCondition
+$allElements = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $allCond)
+
+$results = @()
+foreach ($el in $allElements) {
+  $name = $el.Current.Name
+  $controlType = $el.Current.ControlType.ProgrammaticName -replace 'ControlType\\.', ''
+  $automationId = $el.Current.AutomationId
+  $rect = $el.Current.BoundingRectangle
+
+  $patterns = @()
+  try {
+    foreach ($p in $el.GetSupportedPatterns()) {
+      $pName = $p.ProgrammaticName -replace 'Identifiers\\.Pattern', '' -replace 'PatternIdentifiers\\.Pattern', ''
+      $patterns += $pName
+    }
+  } catch {}
+
+  if ($name -or $automationId) {
+    $results += @{
+      name = $name
+      type = $controlType
+      id = $automationId
+      actions = ($patterns -join ',')
+      x = if ($rect.X -gt -99999 -and $rect.X -lt 99999) { [int]$rect.X } else { 0 }
+      y = if ($rect.Y -gt -99999 -and $rect.Y -lt 99999) { [int]$rect.Y } else { 0 }
+      w = if ($rect.Width -gt 0 -and $rect.Width -lt 99999) { [int]$rect.Width } else { 0 }
+      h = if ($rect.Height -gt 0 -and $rect.Height -lt 99999) { [int]$rect.Height } else { 0 }
+    }
+  }
+}
+
+$results | ConvertTo-Json -Compress -Depth 2
+`;
+      try {
+        const raw = runPSRawInteractive(script, 30000);
+        let elements = JSON.parse(raw);
+        if (!Array.isArray(elements)) elements = [elements];
+
+        // Apply filters
+        if (nameFilter) {
+          const lower = nameFilter.toLowerCase();
+          elements = elements.filter((e: any) => e.name && e.name.toLowerCase().includes(lower));
+        }
+        if (typeFilter) {
+          const lower = typeFilter.toLowerCase();
+          elements = elements.filter((e: any) => e.type && e.type.toLowerCase().includes(lower));
+        }
+
+        return { pid, count: elements.length, elements };
+      } catch (err) {
+        throw new Error(`Deep query failed: ${err instanceof Error ? err.message : err}`);
+      }
+    });
+
+    // Invoke — find a named element and invoke it directly (click/activate)
+    this.routes.set('/invoke', async (body) => {
+      const pid = body.pid as number;
+      const name = body.name as string;
+      const occurrence = (body.occurrence as string) || 'last'; // 'first', 'last', or index number
+      if (!pid || !name) throw new Error('Missing required fields: pid, name');
+
+      const { runPSRawInteractive } = await import('./ps-exec.js');
+      const escapedName = name.replace(/'/g, "''");
+      const script = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName System.Windows.Forms
+
+$rootEl = [System.Windows.Automation.AutomationElement]::RootElement
+$procCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
+)
+$win = $rootEl.FindFirst([System.Windows.Automation.TreeScope]::Children, $procCond)
+if (-not $win) { Write-Output '{"success":false,"error":"window not found"}'; exit }
+
+$nameCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::NameProperty, '${escapedName}'
+)
+$matches = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $nameCond)
+
+if ($matches.Count -eq 0) {
+  Write-Output '{"success":false,"error":"no elements named ${escapedName} found","count":0}'
+  exit
+}
+
+# Select which occurrence
+$target = $null
+$occurrence = '${occurrence}'
+if ($occurrence -eq 'last') {
+  $maxY = -999999
+  foreach ($el in $matches) {
+    $y = $el.Current.BoundingRectangle.Y
+    if ($y -gt $maxY) { $maxY = $y; $target = $el }
+  }
+} elseif ($occurrence -eq 'first') {
+  $minY = 999999
+  foreach ($el in $matches) {
+    $y = $el.Current.BoundingRectangle.Y
+    if ($y -lt $minY) { $minY = $y; $target = $el }
+  }
+} else {
+  $idx = [int]$occurrence
+  if ($idx -lt $matches.Count) { $target = $matches[$idx] }
+}
+
+if (-not $target) {
+  Write-Output '{"success":false,"error":"occurrence not found","count":' + $matches.Count + '}'
+  exit
+}
+
+# Try to invoke
+try {
+  $invokePattern = $target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+  $invokePattern.Invoke()
+  Start-Sleep -Milliseconds 500
+
+  # Read clipboard in case the invoked action copies something
+  $clipText = [System.Windows.Forms.Clipboard]::GetText()
+
+  $rect = $target.Current.BoundingRectangle
+  @{
+    success = $true
+    name = $target.Current.Name
+    type = $target.Current.ControlType.ProgrammaticName
+    totalMatches = $matches.Count
+    x = [int]$rect.X
+    y = [int]$rect.Y
+    clipboardLength = $clipText.Length
+    clipboardText = if ($clipText.Length -gt 0) { $clipText } else { $null }
+  } | ConvertTo-Json -Compress
+} catch {
+  @{
+    success = $false
+    error = $_.Exception.Message
+    name = $target.Current.Name
+    totalMatches = $matches.Count
+  } | ConvertTo-Json -Compress
+}
+`;
+      try {
+        const raw = runPSRawInteractive(script, 20000);
+        return JSON.parse(raw);
+      } catch (err) {
+        throw new Error(`Invoke failed: ${err instanceof Error ? err.message : err}`);
+      }
+    });
+
     // Save/update a flow in the library
     this.routes.set('/flow', async (body) => {
       const appName = (body.app_name as string || body.skill_name as string || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
