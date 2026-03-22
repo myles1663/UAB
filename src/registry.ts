@@ -122,10 +122,19 @@ export class AppRegistry {
 
   // ─── Registration ─────────────────────────────────────────────
 
-  /** Register a detected app into the registry. Returns the profile. */
+  /** Register a detected app into the registry. Returns the profile.
+   *  For multi-process apps (same exe name), keeps the entry with a window title. */
   register(app: DetectedApp): AppProfile {
     const key = this.keyFor(app);
     const existing = this.apps.get(key);
+
+    // Don't overwrite a windowed process with a windowless one (Electron broker/GPU fix)
+    if (existing && existing.windowTitle && existing.windowTitle.length > 0
+        && (!app.windowTitle || app.windowTitle.length === 0)) {
+      // Still index this PID so byPid lookups work
+      this.pidIndex.set(app.pid, key);
+      return existing;
+    }
 
     const profile: AppProfile = {
       executable: key,
