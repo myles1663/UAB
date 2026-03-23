@@ -539,12 +539,15 @@ $results | ConvertTo-Json -Compress -Depth 2
     this.routes.set('/invoke', async (body) => {
       const pid = body.pid as number;
       const name = body.name as string;
-      const occurrence = (body.occurrence as string) || 'last'; // 'first', 'last', or index number
+      const occurrence = (body.occurrence as string) || 'last';
+      const setText = (body.text as string) || '';
       if (!pid || !name) throw new Error('Missing required fields: pid, name');
 
       const { runPSRawInteractive } = await import('./ps-exec.js');
       const escapedName = name.replace(/'/g, "''");
+      const escapedText = setText.replace(/'/g, "''");
       const script = `
+$setTextValue = '${escapedText}'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
@@ -591,10 +594,48 @@ if (-not $target) {
   exit
 }
 
-# Try to invoke
+# Try to invoke or set focus
 try {
-  $invokePattern = $target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-  $invokePattern.Invoke()
+  $invoked = $false
+  # Try InvokePattern first (buttons, links)
+  try {
+    $invokePattern = $target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+    $invokePattern.Invoke()
+    $invoked = $true
+  } catch {}
+
+  # If InvokePattern failed, try SetFocus (works for text inputs, documents)
+  if (-not $invoked) {
+    try {
+      $target.SetFocus()
+      $invoked = $true
+    } catch {}
+  }
+
+  # If InvokePattern and SetFocus failed, try ValuePattern with SetValue
+  if (-not $invoked) {
+    try {
+      $valuePattern = $target.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+      if ($setTextValue) {
+        $valuePattern.SetValue($setTextValue)
+      } else {
+        $valuePattern.SetValue('')
+      }
+      $invoked = $true
+    } catch {}
+  }
+
+  # Try ExpandCollapsePattern (dropdowns, attach buttons)
+  if (-not $invoked) {
+    try {
+      $expandPattern = $target.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+      $expandPattern.Expand()
+      $invoked = $true
+    } catch {}
+  }
+
+  if (-not $invoked) { throw [System.Exception]::new("No supported pattern (Invoke, Focus, Value, or ExpandCollapse)") }
+
   Start-Sleep -Milliseconds 500
 
   # Read clipboard in case the invoked action copies something
