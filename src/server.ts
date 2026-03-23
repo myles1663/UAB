@@ -483,9 +483,11 @@ $allElements = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, 
 
 $results = @()
 foreach ($el in $allElements) {
-  $name = $el.Current.Name
+  $rawName = $el.Current.Name
+  $name = if ($rawName) { $rawName -replace '[^\x20-\x7E]', '' } else { '' }
   $controlType = $el.Current.ControlType.ProgrammaticName -replace 'ControlType\\.', ''
-  $automationId = $el.Current.AutomationId
+  $rawId = $el.Current.AutomationId
+  $automationId = if ($rawId) { $rawId -replace '[^\x20-\x7E]', '' } else { '' }
   $rect = $el.Current.BoundingRectangle
 
   $patterns = @()
@@ -596,25 +598,25 @@ try {
   Start-Sleep -Milliseconds 500
 
   # Read clipboard in case the invoked action copies something
-  $clipText = [System.Windows.Forms.Clipboard]::GetText()
+  $clipRaw = [System.Windows.Forms.Clipboard]::GetText()
 
   $rect = $target.Current.BoundingRectangle
-  @{
+  $result = @{
     success = $true
-    name = $target.Current.Name
+    name = ($target.Current.Name -replace '[^\x20-\x7E]', '')
     type = $target.Current.ControlType.ProgrammaticName
     totalMatches = $matches.Count
-    x = [int]$rect.X
-    y = [int]$rect.Y
-    clipboardLength = $clipText.Length
-    clipboardText = if ($clipText.Length -gt 0) { $clipText } else { $null }
-  } | ConvertTo-Json -Compress
+    x = if ($rect.X -gt -99999 -and $rect.X -lt 99999) { [int]$rect.X } else { 0 }
+    y = if ($rect.Y -gt -99999 -and $rect.Y -lt 99999) { [int]$rect.Y } else { 0 }
+    clipboardLength = $clipRaw.Length
+    clipboardText = if ($clipRaw.Length -gt 0) { $clipRaw -replace '[^\x20-\x7E\r\n]', '' } else { '' }
+  }
+  $result | ConvertTo-Json -Compress -Depth 2
 } catch {
   @{
     success = $false
-    error = $_.Exception.Message
-    name = $target.Current.Name
-    totalMatches = $matches.Count
+    error = ($_.Exception.Message -replace '[^\x20-\x7E]', '')
+    totalMatches = if ($matches) { $matches.Count } else { 0 }
   } | ConvertTo-Json -Compress
 }
 `;
@@ -639,6 +641,24 @@ try {
       const flowPath = join(libDir, `${appName}.json`);
       writeFileSync(flowPath, JSON.stringify(body, null, 2), 'utf-8');
       return { success: true, message: `Flow saved for ${appName}`, path: flowPath };
+    });
+
+    // Set clipboard — set text into clipboard for pasting
+    this.routes.set('/set-clipboard', async (body) => {
+      const text = body.text as string;
+      if (!text) throw new Error('Missing required field: text');
+
+      const { runPSRawInteractive } = await import('./ps-exec.js');
+      try {
+        const escaped = text.replace(/'/g, "''");
+        runPSRawInteractive(
+          `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear(); [System.Windows.Forms.Clipboard]::SetText('${escaped}'); Write-Output OK`,
+          10000,
+        );
+        return { success: true, length: text.length };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
     });
 
     // Copy — select all + copy from a window, return clipboard text
