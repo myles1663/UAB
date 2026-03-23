@@ -4,7 +4,7 @@
   "executable": "grok.exe",
   "app_framework": "Electron",
   "target_flow": "Send and read messages in Grok desktop app (via WebCatalog)",
-  "input_method": "tab_to_input_then_clipboard_paste",
+  "input_method": "deep_query_invoke_then_clipboard_paste",
   "focus_method": "focus_endpoint",
   "read_method": "copy_then_screenshot_fallback",
   "sidebar_variants": {
@@ -15,17 +15,17 @@
   "navigation_plan": [
     {"step": 1, "action": "connect", "params": {"target": "grok"}, "note": "Returns pid"},
     {"step": 2, "action": "focus", "params": {"pid": "{pid}"}, "note": "Bring window to front without resizing"},
-    {"step": 3, "action": "keypress", "params": {"pid": "{pid}", "key": "Escape"}, "note": "Reset focus — close any open menus or popups"},
-    {"step": 4, "action": "tab_to_input", "method": "repeated_tab", "note": "Press Tab repeatedly until reaching the input field. The input is always ONE Tab after the Attach button. Landmark: when Attach highlights, the next Tab is the input. Sidebar expanded = 2 Tabs total. Sidebar collapsed = more Tabs. Max 10 Tabs before giving up."},
-    {"step": 5, "action": "keypress", "params": {"pid": "{pid}", "key": "a"}, "note": "Type any single character to ACTIVATE the cursor — input is selected but cursor not blinking until a keystroke"},
-    {"step": 6, "action": "hotkey", "params": {"pid": "{pid}", "keys": ["ctrl", "a"]}, "note": "Select all to highlight the throwaway character"},
-    {"step": 7, "action": "keypress", "params": {"pid": "{pid}", "key": "Backspace"}, "note": "Delete the throwaway character — input is now active and empty"},
-    {"step": 8, "action": "clear_then_set_clipboard", "params": {"text": "{message}"}, "note": "ALWAYS clear clipboard first, then set new text. Use interactive PowerShell: runPSRawInteractive('Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear(); [System.Windows.Forms.Clipboard]::SetText(\"YOUR TEXT\")). If old clipboard content gets pasted, this step was skipped."},
+    {"step": 3, "action": "deep_query", "params": {"pid": "{pid}"}, "note": "Use /deep-query to see all elements. Look for the input field and any buttons you need."},
+    {"step": 4, "action": "invoke", "params": {"pid": "{pid}", "name": "What's on your mind?", "occurrence": "first"}, "note": "Click the input field by name to focus it. If input has different placeholder text, use /deep-query to find it."},
+    {"step": 5, "action": "keypress", "params": {"pid": "{pid}", "key": "a"}, "note": "Type one character to activate the cursor (Grok requires this)"},
+    {"step": 6, "action": "hotkey", "params": {"pid": "{pid}", "keys": ["ctrl", "a"]}, "note": "Select all"},
+    {"step": 7, "action": "keypress", "params": {"pid": "{pid}", "key": "Backspace"}, "note": "Delete the throwaway character"},
+    {"step": 8, "action": "clear_then_set_clipboard", "params": {"text": "{message}"}, "note": "Clear clipboard then set new text via interactive PowerShell"},
     {"step": 9, "action": "hotkey", "params": {"pid": "{pid}", "keys": ["ctrl", "v"]}, "note": "Paste message from clipboard"},
-    {"step": 10, "action": "screenshot_confirm", "params": {"pid": "{pid}"}, "note": "Verify text appeared in input before sending", "timeout_ms": 500},
+    {"step": 10, "action": "screenshot_confirm", "params": {"pid": "{pid}"}, "note": "Verify text appeared in input before sending"},
     {"step": 11, "action": "keypress", "params": {"pid": "{pid}", "key": "Enter"}, "note": "Send the message"},
     {"step": 12, "action": "wait", "duration_ms": 15000, "note": "Wait for Grok to respond"},
-    {"step": 13, "action": "read_response", "method": "copy_first", "note": "Try /copy first — returns full text including scrolled content. If /copy returns empty text, fall back to screenshot. Grok's Ctrl+A may not work in all states but is worth trying first since screenshot misses scrolled content."}
+    {"step": 13, "action": "invoke", "params": {"pid": "{pid}", "name": "Copy", "occurrence": "last"}, "note": "Click the last Copy button to copy Grok's response to clipboard. Returns clipboardText with full response."}
   ],
   "known_issues": [
     "Tab count depends on sidebar state — expanded (2 Tabs) vs collapsed (5-8 Tabs)",
