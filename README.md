@@ -505,6 +505,24 @@ When an agent encounters a new app, it checks `GET /flow/{appname}`. If a flow e
 
 This creates a recursive improvement loop: **Attempt → Verify → Learn → Store → Next attempt is instant.** Unlike human muscle memory that degrades over time, the flow library is permanent, exact, and shared across every agent connected to UAB.
 
+### X-ray Vision for Agents
+
+UAB gives AI agents the same visual understanding of applications that humans have — but in data form.
+
+`POST /deep-query` scans the entire UI tree of any application and returns every named element — buttons, inputs, links, menus, text — with their types, supported actions, and screen positions. One call reveals everything a human can see.
+
+`POST /invoke` acts on any element by name. Find "Copy" → click it. Find "New chat" → click it. No Tab navigation, no coordinate guessing, no screenshots needed.
+
+```bash
+# See everything in ChatGPT
+curl -X POST localhost:3100/deep-query -H "X-API-Key: KEY" -d '{"pid":28968}'
+# → 123 elements: buttons, links, inputs, conversations, model selector...
+
+# Click any button by name
+curl -X POST localhost:3100/invoke -H "X-API-Key: KEY" -d '{"pid":28968, "name":"Copy", "occurrence":"last"}'
+# → Invokes the last Copy button, returns clipboard text
+```
+
 ## Session 0 Bridge
 
 UAB works even when running in Session 0 (SSH, Windows Services). It automatically detects Session 0 and routes PowerShell through the Task Scheduler with `/IT` flag to bridge to the interactive desktop session.

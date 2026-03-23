@@ -1072,6 +1072,21 @@ Flow files are stored in `data/flow-library/`. Framework defaults are in `data/f
 
 ---
 
+## Deep Query & Invoke
+
+### POST /deep-query
+Scan entire UI tree for all named/actionable elements.
+Request: `{"pid": 1234}` or `{"pid": 1234, "name": "Copy"}` or `{"pid": 1234, "type": "button"}`
+Response: `{"pid": 1234, "count": 123, "elements": [{"name": "Copy", "type": "Button", "actions": "InvokePattern", "x": 100, "y": 200, "w": 33, "h": 32}, ...]}`
+
+### POST /invoke
+Find an element by name and invoke it directly.
+Request: `{"pid": 1234, "name": "Copy", "occurrence": "last"}`
+Response: `{"success": true, "name": "Copy", "totalMatches": 6, "clipboardText": "...", "clipboardLength": 1167}`
+- occurrence: "first", "last", or numeric index
+
+---
+
 ## Environment Detection
 
 **Import:** `import { detectEnvironment, getDefaults, env } from 'universal-app-bridge/environment'`
