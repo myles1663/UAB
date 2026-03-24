@@ -1,7 +1,7 @@
 /**
  * UAB Service — Singleton service managing the Universal App Bridge lifecycle.
  *
- * Framework-agnostic: import this module from ClaudeClaw, Lancelot,
+ * Framework-agnostic: import this module from Kai, Lancelot,
  * or any other AI agent runtime to get desktop app control.
  *
  * Phase 4 enhancements:
@@ -137,3 +137,4 @@ export declare class UABService {
 }
 /** Singleton UAB service instance */
 export declare const uab: UABService;
+//# sourceMappingURL=service.d.ts.map

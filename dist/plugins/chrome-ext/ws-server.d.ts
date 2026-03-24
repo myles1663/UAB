@@ -48,3 +48,4 @@ export declare class ExtensionWSServer {
     private handleMessage;
     private startPingLoop;
 }
+//# sourceMappingURL=ws-server.d.ts.map

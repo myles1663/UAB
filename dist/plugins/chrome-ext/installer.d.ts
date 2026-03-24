@@ -1,7 +1,7 @@
 /**
  * Chrome Extension Auto-Installer
  *
- * Registers the ClaudeClaw Bridge extension for automatic installation
+ * Registers the Kai Bridge extension for automatic installation
  * via Windows registry (external extensions mechanism).
  *
  * How it works:
@@ -34,20 +34,25 @@ export declare function generateIcons(): void;
  */
 export declare function getInstallInstructions(): string;
 /**
- * Attempt to register the extension via Windows registry
- * for automatic loading. This is a "soft" install that
- * Chrome will pick up on next restart.
+ * Register the extension via platform-native auto-install mechanism.
  *
- * Note: This only works for .crx packaged extensions or
- * extensions hosted at a URL. For unpacked extensions,
- * manual loading via chrome://extensions is required.
+ * Windows: Registry keys under HKCU for Chrome and Edge.
+ * Mac: External Extensions JSON files.
+ *
+ * Requires the .crx file and extension ID to exist (run pack-extension first).
  */
 export declare function registerViaRegistry(): {
     success: boolean;
     message: string;
+    browsers: string[];
 };
+/**
+ * Check if the extension is already registered via platform-native mechanisms.
+ */
+export declare function isExtensionInstalled(): boolean;
 /**
  * Check if Chrome is running with the extension loaded.
  * Tries to detect the extension's WebSocket connection.
  */
 export declare function isExtensionActive(wsConnected: boolean): boolean;
+//# sourceMappingURL=installer.d.ts.map

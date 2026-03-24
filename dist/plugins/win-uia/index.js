@@ -162,18 +162,22 @@ function runRawPSScript(script, timeoutMs = 15000) {
     // UIA requires interactive desktop session (Session 1)
     return runPSRawInteractive(script, timeoutMs);
 }
-function enumerateViaUIA(pid, maxDepth = 8) {
+function enumerateViaUIA(pid, maxDepth = 12) {
+    // Uses RawViewWalker — exposes ALL UIA elements including ones hidden
+    // by Content/Control view filters. Critical for Electron, CEF, UWP apps
+    // where the filtered views only show 10-15 elements but raw shows 200+.
     const script = `
 $ErrorActionPreference = 'SilentlyContinue'
-function Get-UIAElements {
+$walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
+
+function Get-UIARawElements {
   param([System.Windows.Automation.AutomationElement]$element, [int]$depth, [int]$maxDepth)
   if ($depth -gt $maxDepth) { return @() }
 
   $result = @()
-  $cond = [System.Windows.Automation.Condition]::TrueCondition
-  $children = $element.FindAll([System.Windows.Automation.TreeScope]::Children, $cond)
+  $child = $walker.GetFirstChild($element)
 
-  foreach ($child in $children) {
+  while ($child -ne $null) {
     try {
       $rect = $child.Current.BoundingRectangle
       $obj = @{
@@ -188,10 +192,11 @@ function Get-UIAElements {
         y = [math]::Round($rect.Y)
         width = [math]::Round($rect.Width)
         height = [math]::Round($rect.Height)
-        children = @(Get-UIAElements -element $child -depth ($depth + 1) -maxDepth $maxDepth)
+        children = @(Get-UIARawElements -element $child -depth ($depth + 1) -maxDepth $maxDepth)
       }
       $result += $obj
     } catch { }
+    $child = $walker.GetNextSibling($child)
   }
   return $result
 }
@@ -217,12 +222,12 @@ foreach ($win in $appWindows) {
     y = [math]::Round($rect.Y)
     width = [math]::Round($rect.Width)
     height = [math]::Round($rect.Height)
-    children = @(Get-UIAElements -element $win -depth 1 -maxDepth ${maxDepth})
+    children = @(Get-UIARawElements -element $win -depth 1 -maxDepth ${maxDepth})
   }
   $allElements += $winObj
 }
 
-$allElements | ConvertTo-Json -Depth 20 -Compress
+$allElements | ConvertTo-Json -Depth 25 -Compress
 `;
     try {
         const raw = runUIAScript(script, 30000);
@@ -275,13 +280,17 @@ $procCond = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
 )
 
+$walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
 function Find-Element {
-  param([System.Windows.Automation.AutomationElement]$parent, [string]$targetId)
-  $cond = [System.Windows.Automation.Condition]::TrueCondition
-  $all = $parent.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
-  foreach ($el in $all) {
-    $elId = "uia-$($el.Current.AutomationId)-$($el.GetHashCode())"
-    if ($elId -eq $targetId) { return $el }
+  param([System.Windows.Automation.AutomationElement]$parent, [string]$targetId, [int]$depth = 0)
+  if ($depth -gt 15) { return $null }
+  $child = $walker.GetFirstChild($parent)
+  while ($child -ne $null) {
+    $elId = "uia-$($child.Current.AutomationId)-$($child.GetHashCode())"
+    if ($elId -eq $targetId) { return $child }
+    $found = Find-Element -parent $child -targetId $targetId -depth ($depth + 1)
+    if ($found) { return $found }
+    $child = $walker.GetNextSibling($child)
   }
   return $null
 }
@@ -554,12 +563,17 @@ $procCond = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
 )
 
+$walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
 function Find-El {
-  param([System.Windows.Automation.AutomationElement]$parent, [string]$targetId)
-  $all = $parent.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-  foreach ($el in $all) {
-    $elId = "uia-$($el.Current.AutomationId)-$($el.GetHashCode())"
-    if ($elId -eq $targetId) { return $el }
+  param([System.Windows.Automation.AutomationElement]$parent, [string]$targetId, [int]$depth = 0)
+  if ($depth -gt 15) { return $null }
+  $child = $walker.GetFirstChild($parent)
+  while ($child -ne $null) {
+    $elId = "uia-$($child.Current.AutomationId)-$($child.GetHashCode())"
+    if ($elId -eq $targetId) { return $child }
+    $found = Find-El -parent $child -targetId $targetId -depth ($depth + 1)
+    if ($found) { return $found }
+    $child = $walker.GetNextSibling($child)
   }
   return $null
 }
@@ -590,12 +604,23 @@ $cy = [int]($rect.Y + $rect.Height / 2)
 [CtxMenu]::RightClick($cx, $cy)
 Start-Sleep -Milliseconds 600
 
-# Now enumerate the context menu items (still in same process, no focus loss)
+# Now enumerate the context menu items via RawViewWalker (still in same process, no focus loss)
 $menuItems = @()
-$allEls = @()
-foreach ($win in $appWindows) {
-  $allEls += $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+$script:allEls = @()
+function Collect-All {
+  param([System.Windows.Automation.AutomationElement]$el, [int]$depth = 0)
+  if ($depth -gt 8) { return }
+  $ch = $walker.GetFirstChild($el)
+  while ($ch -ne $null) {
+    $script:allEls += $ch
+    Collect-All -el $ch -depth ($depth + 1)
+    $ch = $walker.GetNextSibling($ch)
+  }
 }
+foreach ($win in $appWindows) {
+  Collect-All -el $win
+}
+$allEls = $script:allEls
 foreach ($el in $allEls) {
   $ct = $el.Current.ControlType.ProgrammaticName -replace 'ControlType\\.', ''
   if ($ct -eq 'MenuItem' -or ($ct -eq 'Button' -and $el.Current.Name -match 'Cut|Copy|Paste|Select|Delete|Undo|Redo')) {
@@ -1083,13 +1108,17 @@ $procCond = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
 )
 
+$walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
 function Find-Element {
-  param([System.Windows.Automation.AutomationElement]$parent, [string]$targetId)
-  $cond = [System.Windows.Automation.Condition]::TrueCondition
-  $all = $parent.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
-  foreach ($el in $all) {
-    $elId = "uia-$($el.Current.AutomationId)-$($el.GetHashCode())"
-    if ($elId -eq $targetId) { return $el }
+  param([System.Windows.Automation.AutomationElement]$parent, [string]$targetId, [int]$depth = 0)
+  if ($depth -gt 15) { return $null }
+  $child = $walker.GetFirstChild($parent)
+  while ($child -ne $null) {
+    $elId = "uia-$($child.Current.AutomationId)-$($child.GetHashCode())"
+    if ($elId -eq $targetId) { return $child }
+    $found = Find-Element -parent $child -targetId $targetId -depth ($depth + 1)
+    if ($found) { return $found }
+    $child = $walker.GetNextSibling($child)
   }
   return $null
 }
@@ -1143,13 +1172,17 @@ $procCond = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
 )
 
+$walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
 function Find-Element {
-  param([System.Windows.Automation.AutomationElement]$parent, [string]$targetId)
-  $cond = [System.Windows.Automation.Condition]::TrueCondition
-  $all = $parent.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
-  foreach ($el in $all) {
-    $elId = "uia-$($el.Current.AutomationId)-$($el.GetHashCode())"
-    if ($elId -eq $targetId) { return $el }
+  param([System.Windows.Automation.AutomationElement]$parent, [string]$targetId, [int]$depth = 0)
+  if ($depth -gt 15) { return $null }
+  $child = $walker.GetFirstChild($parent)
+  while ($child -ne $null) {
+    $elId = "uia-$($child.Current.AutomationId)-$($child.GetHashCode())"
+    if ($elId -eq $targetId) { return $child }
+    $found = Find-Element -parent $child -targetId $targetId -depth ($depth + 1)
+    if ($found) { return $found }
+    $child = $walker.GetNextSibling($child)
   }
   return $null
 }
@@ -1306,7 +1339,7 @@ export class WinUIAPlugin {
         // Accept all Windows GUI apps — UIA works as universal fallback
         // including Electron apps when CDP is unavailable
         return ['wpf', 'winui', 'dotnet', 'qt5', 'qt6', 'gtk3', 'gtk4',
-            'java-swing', 'javafx', 'flutter', 'electron', 'unknown'].includes(app.framework);
+            'java-swing', 'javafx', 'flutter', 'electron', 'browser', 'unknown'].includes(app.framework);
     }
     async connect(app) {
         const state = getAppStateViaUIA(app.pid);
@@ -1365,7 +1398,11 @@ class WinUIAConnection {
                 if (params?.text) {
                     return visionTypeText(this.app.pid, params.text);
                 }
-                break; // Fall through to UIA handler if no text
+                // Fall through to UIA handler if no text
+                return performUIAAction(this.app.pid, elementId, action, {
+                    text: params?.text,
+                    value: params?.value,
+                });
             case 'minimize':
             case 'maximize':
             case 'restore':

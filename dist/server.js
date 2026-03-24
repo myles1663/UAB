@@ -105,11 +105,73 @@ export class UABServer {
         if (req.method === 'GET' && path === '/health') {
             this.sendJSON(res, 200, {
                 status: 'ok',
-                version: '0.9.0',
+                version: '1.0.0',
                 environment: this.environment,
                 connector: this.connector.running,
                 uptime: Math.floor(process.uptime()),
             });
+            return;
+        }
+        // GET /flow/{appname} — lookup pre-built flow for an app (public, no auth)
+        if (req.method === 'GET' && path.startsWith('/flow/')) {
+            const appName = path.substring(6).toLowerCase().replace(/[^a-z0-9_-]/g, '');
+            const { existsSync: flowExists, readFileSync: flowRead, readdirSync: flowDir } = await import('fs');
+            const { resolve: flowResolve, join: flowJoin } = await import('path');
+            const libDir = flowResolve('data/flow-library');
+            if (appName === '' || appName === 'list') {
+                // List all available flows
+                try {
+                    const files = flowDir(libDir).filter((f) => f.endsWith('.json') && !f.startsWith('_'));
+                    const flows = files.map((f) => {
+                        const data = JSON.parse(flowRead(flowJoin(libDir, f), 'utf-8'));
+                        return { app: f.replace('.json', ''), name: data.skill_name, framework: data.app_framework, version: data.version };
+                    });
+                    this.sendJSON(res, 200, { flows });
+                }
+                catch {
+                    this.sendJSON(res, 200, { flows: [] });
+                }
+                return;
+            }
+            // Look for exact match first, then fuzzy match
+            let flowPath = flowJoin(libDir, `${appName}.json`);
+            if (!flowExists(flowPath)) {
+                // Fuzzy: check if any file contains the app name
+                try {
+                    const files = flowDir(libDir).filter((f) => f.endsWith('.json') && !f.startsWith('_'));
+                    const match = files.find((f) => f.includes(appName) || appName.includes(f.replace('.json', '')));
+                    if (match)
+                        flowPath = flowJoin(libDir, match);
+                }
+                catch { }
+            }
+            if (flowExists(flowPath)) {
+                try {
+                    const flow = JSON.parse(flowRead(flowPath, 'utf-8'));
+                    this.sendJSON(res, 200, flow);
+                }
+                catch {
+                    this.sendError(res, 500, 'Failed to parse flow file');
+                }
+            }
+            else {
+                // Return default based on framework if we can detect it
+                const defaultsPath = flowJoin(libDir, '_defaults.json');
+                if (flowExists(defaultsPath)) {
+                    const defaults = JSON.parse(flowRead(defaultsPath, 'utf-8'));
+                    this.sendJSON(res, 200, {
+                        skill_name: `${appName}_default_flow`,
+                        app_name: appName,
+                        app_framework: 'unknown',
+                        target_flow: `Default interaction flow for ${appName}`,
+                        ...defaults.frameworks['unknown'],
+                        note: 'No app-specific flow found. Using default template. After successful interaction, save the working flow via POST /flow.',
+                    });
+                }
+                else {
+                    this.sendError(res, 404, `No flow found for "${appName}". GET /flow/list for available flows.`);
+                }
+            }
             return;
         }
         // GET /info is public (agents need to discover endpoints)
@@ -353,6 +415,238 @@ export class UABServer {
             const result = await conn.screenshot(pid, body.outputPath);
             return { pid, ...result };
         });
+        // Deep query — find ALL named/actionable elements in an app via UIA FindAll
+        this.routes.set('/deep-query', async (body) => {
+            const pid = body.pid;
+            const nameFilter = body.name || '';
+            const typeFilter = body.type || '';
+            if (!pid)
+                throw new Error('Missing required field: pid');
+            const { runPSRawInteractive } = await import('./ps-exec.js');
+            const script = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+
+$rootEl = [System.Windows.Automation.AutomationElement]::RootElement
+$procCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
+)
+$win = $rootEl.FindFirst([System.Windows.Automation.TreeScope]::Children, $procCond)
+if (-not $win) { Write-Output '[]'; exit }
+
+$allCond = [System.Windows.Automation.Condition]::TrueCondition
+$allElements = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $allCond)
+
+$results = @()
+foreach ($el in $allElements) {
+  $rawName = $el.Current.Name
+  $name = if ($rawName) { $rawName -replace '[^\\x20-\\x7E]', '' } else { '' }
+  $controlType = $el.Current.ControlType.ProgrammaticName -replace 'ControlType\\\\.', ''
+  $rawId = $el.Current.AutomationId
+  $automationId = if ($rawId) { $rawId -replace '[^\\x20-\\x7E]', '' } else { '' }
+  $rect = $el.Current.BoundingRectangle
+
+  $patterns = @()
+  try {
+    foreach ($p in $el.GetSupportedPatterns()) {
+      $pName = $p.ProgrammaticName -replace 'Identifiers\\\\.Pattern', '' -replace 'PatternIdentifiers\\\\.Pattern', ''
+      $patterns += $pName
+    }
+  } catch {}
+
+  if ($name -or $automationId) {
+    $results += @{
+      name = $name
+      type = $controlType
+      id = $automationId
+      actions = ($patterns -join ',')
+      x = if ($rect.X -gt -99999 -and $rect.X -lt 99999) { [int]$rect.X } else { 0 }
+      y = if ($rect.Y -gt -99999 -and $rect.Y -lt 99999) { [int]$rect.Y } else { 0 }
+      w = if ($rect.Width -gt 0 -and $rect.Width -lt 99999) { [int]$rect.Width } else { 0 }
+      h = if ($rect.Height -gt 0 -and $rect.Height -lt 99999) { [int]$rect.Height } else { 0 }
+    }
+  }
+}
+
+$results | ConvertTo-Json -Compress -Depth 2
+`;
+            try {
+                const raw = runPSRawInteractive(script, 30000);
+                let elements = JSON.parse(raw);
+                if (!Array.isArray(elements))
+                    elements = [elements];
+                // Apply filters
+                if (nameFilter) {
+                    const lower = nameFilter.toLowerCase();
+                    elements = elements.filter((e) => e.name && e.name.toLowerCase().includes(lower));
+                }
+                if (typeFilter) {
+                    const lower = typeFilter.toLowerCase();
+                    elements = elements.filter((e) => e.type && e.type.toLowerCase().includes(lower));
+                }
+                return { pid, count: elements.length, elements };
+            }
+            catch (err) {
+                throw new Error(`Deep query failed: ${err instanceof Error ? err.message : err}`);
+            }
+        });
+        // Invoke — find a named element and invoke it directly (click/activate)
+        this.routes.set('/invoke', async (body) => {
+            const pid = body.pid;
+            const name = body.name;
+            const occurrence = body.occurrence || 'last';
+            const setText = body.text || '';
+            if (!pid || !name)
+                throw new Error('Missing required fields: pid, name');
+            const { runPSRawInteractive } = await import('./ps-exec.js');
+            const escapedName = name.replace(/'/g, "''");
+            const escapedText = setText.replace(/'/g, "''");
+            const script = `
+$setTextValue = '${escapedText}'
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName System.Windows.Forms
+
+$rootEl = [System.Windows.Automation.AutomationElement]::RootElement
+$procCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
+)
+$win = $rootEl.FindFirst([System.Windows.Automation.TreeScope]::Children, $procCond)
+if (-not $win) { Write-Output '{"success":false,"error":"window not found"}'; exit }
+
+$nameCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::NameProperty, '${escapedName}'
+)
+$matches = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $nameCond)
+
+if ($matches.Count -eq 0) {
+  Write-Output '{"success":false,"error":"no elements named ${escapedName} found","count":0}'
+  exit
+}
+
+# Select which occurrence
+$target = $null
+$occurrence = '${occurrence}'
+if ($occurrence -eq 'last') {
+  $maxY = -999999
+  foreach ($el in $matches) {
+    $y = $el.Current.BoundingRectangle.Y
+    if ($y -gt $maxY) { $maxY = $y; $target = $el }
+  }
+} elseif ($occurrence -eq 'first') {
+  $minY = 999999
+  foreach ($el in $matches) {
+    $y = $el.Current.BoundingRectangle.Y
+    if ($y -lt $minY) { $minY = $y; $target = $el }
+  }
+} else {
+  $idx = [int]$occurrence
+  if ($idx -lt $matches.Count) { $target = $matches[$idx] }
+}
+
+if (-not $target) {
+  Write-Output '{"success":false,"error":"occurrence not found","count":' + $matches.Count + '}'
+  exit
+}
+
+# Try to invoke or set focus
+try {
+  $invoked = $false
+  try {
+    $invokePattern = $target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+    $invokePattern.Invoke()
+    $invoked = $true
+  } catch {}
+
+  if (-not $invoked) {
+    try {
+      $target.SetFocus()
+      $invoked = $true
+    } catch {}
+  }
+
+  if (-not $invoked) {
+    try {
+      $valuePattern = $target.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+      if ($setTextValue) {
+        $valuePattern.SetValue($setTextValue)
+      } else {
+        $valuePattern.SetValue('')
+      }
+      $invoked = $true
+    } catch {}
+  }
+
+  if (-not $invoked) {
+    try {
+      $expandPattern = $target.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+      $expandPattern.Expand()
+      $invoked = $true
+    } catch {}
+  }
+
+  if (-not $invoked) { throw [System.Exception]::new("No supported pattern (Invoke, Focus, Value, or ExpandCollapse)") }
+
+  Start-Sleep -Milliseconds 500
+
+  $clipRaw = [System.Windows.Forms.Clipboard]::GetText()
+
+  $rect = $target.Current.BoundingRectangle
+  $result = @{
+    success = $true
+    name = ($target.Current.Name -replace '[^\\x20-\\x7E]', '')
+    type = $target.Current.ControlType.ProgrammaticName
+    totalMatches = $matches.Count
+    x = if ($rect.X -gt -99999 -and $rect.X -lt 99999) { [int]$rect.X } else { 0 }
+    y = if ($rect.Y -gt -99999 -and $rect.Y -lt 99999) { [int]$rect.Y } else { 0 }
+    clipboardLength = $clipRaw.Length
+    clipboardText = if ($clipRaw.Length -gt 0) { $clipRaw -replace '[^\\x20-\\x7E\\r\\n]', '' } else { '' }
+  }
+  $result | ConvertTo-Json -Compress -Depth 2
+} catch {
+  @{
+    success = $false
+    error = ($_.Exception.Message -replace '[^\\x20-\\x7E]', '')
+    totalMatches = if ($matches) { $matches.Count } else { 0 }
+  } | ConvertTo-Json -Compress
+}
+`;
+            try {
+                const raw = runPSRawInteractive(script, 20000);
+                return JSON.parse(raw);
+            }
+            catch (err) {
+                throw new Error(`Invoke failed: ${err instanceof Error ? err.message : err}`);
+            }
+        });
+        // Save/update a flow in the library
+        this.routes.set('/flow', async (body) => {
+            const appName = (body.app_name || body.skill_name || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+            if (!appName)
+                throw new Error('Missing required field: app_name');
+            const { writeFileSync, mkdirSync } = await import('fs');
+            const { resolve, join } = await import('path');
+            const libDir = resolve('data/flow-library');
+            mkdirSync(libDir, { recursive: true });
+            const flowPath = join(libDir, `${appName}.json`);
+            writeFileSync(flowPath, JSON.stringify(body, null, 2), 'utf-8');
+            return { success: true, message: `Flow saved for ${appName}`, path: flowPath };
+        });
+        // Set clipboard — set text into clipboard for pasting
+        this.routes.set('/set-clipboard', async (body) => {
+            const text = body.text;
+            if (!text)
+                throw new Error('Missing required field: text');
+            const { runPSRawInteractive } = await import('./ps-exec.js');
+            try {
+                const escaped = text.replace(/'/g, "''");
+                runPSRawInteractive(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear(); [System.Windows.Forms.Clipboard]::SetText('${escaped}'); Write-Output OK`, 10000);
+                return { success: true, length: text.length };
+            }
+            catch (err) {
+                return { success: false, error: err instanceof Error ? err.message : String(err) };
+            }
+        });
         // Copy — select all + copy from a window, return clipboard text
         this.routes.set('/copy', async (body, conn) => {
             const pid = body.pid;
@@ -500,6 +794,64 @@ export class UABServer {
         // Environment
         this.routes.set('/environment', async () => {
             return this.environment;
+        });
+        // ─── Feature 1: Real-time Focus Tracking ─────────────────────
+        this.routes.set('/focused', async (body, conn) => {
+            const pid = body.pid;
+            if (!pid)
+                throw new Error('Missing required field: pid');
+            const result = await conn.focused(pid);
+            return result;
+        });
+        // ─── Feature 2: Element Addressing by Path ───────────────────
+        this.routes.set('/find-by-path', async (body, conn) => {
+            const pid = body.pid;
+            if (!pid)
+                throw new Error('Missing required field: pid');
+            const selector = {
+                path: body.path,
+                name: body.name,
+                parent: body.parent,
+                type: body.type,
+                occurrence: body.occurrence,
+            };
+            const elements = await conn.findByPath(pid, selector);
+            return { pid, count: elements.length, elements };
+        });
+        // ─── Feature 3: State-change Listener ────────────────────────
+        this.routes.set('/watch', async (body, conn) => {
+            const pid = body.pid;
+            if (!pid)
+                throw new Error('Missing required field: pid');
+            const durationMs = body.durationMs || 3000;
+            const pollMs = body.pollMs || 200;
+            const events = await conn.watchChanges(pid, durationMs, pollMs);
+            return { pid, eventCount: events.length, events };
+        });
+        // ─── Feature 4: Atomic Action Chains ─────────────────────────
+        this.routes.set('/atomic', async (body, conn) => {
+            const pid = body.pid;
+            if (!pid)
+                throw new Error('Missing required field: pid');
+            const steps = body.steps;
+            if (!steps || !Array.isArray(steps))
+                throw new Error('Missing required field: steps (array)');
+            const label = body.label || 'atomic-chain';
+            const result = await conn.atomicChain({ pid, steps, label });
+            return { pid, label, ...result };
+        });
+        // ─── Feature 5: Smart Element Resolution ─────────────────────
+        this.routes.set('/smart-invoke', async (body, conn) => {
+            const pid = body.pid;
+            const name = body.name;
+            if (!pid || !name)
+                throw new Error('Missing required fields: pid, name');
+            const result = await conn.smartInvoke(pid, name, {
+                parent: body.parent,
+                type: body.type,
+                occurrence: body.occurrence,
+            });
+            return { pid, name, ...result };
         });
     }
 }

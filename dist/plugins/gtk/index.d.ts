@@ -23,3 +23,4 @@ export declare class GtkPlugin implements FrameworkPlugin {
     connect(app: DetectedApp): Promise<PluginConnection>;
 }
 export default GtkPlugin;
+//# sourceMappingURL=index.d.ts.map

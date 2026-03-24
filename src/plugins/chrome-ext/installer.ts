@@ -1,7 +1,7 @@
 /**
  * Chrome Extension Auto-Installer
  *
- * Registers the ClaudeClaw Bridge extension for automatic installation
+ * Registers the Kai Bridge extension for automatic installation
  * via Windows registry (external extensions mechanism).
  *
  * How it works:
@@ -61,7 +61,7 @@ export function generateIcons(): void {
   // PNG signature + IHDR + IDAT + IEND
   const createMinPng = (size: number): Buffer => {
     // For a simple icon, we'll create a colored square
-    // This is a minimal valid PNG with the ClaudeClaw purple
+    // This is a minimal valid PNG with the Kai purple
     const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
     // IHDR chunk
@@ -152,7 +152,7 @@ export function getInstallInstructions(): string {
     `4. Select folder: ${extPath}`,
     '5. The extension will connect automatically!',
     '',
-    '📌 The extension auto-reconnects when ClaudeClaw restarts.',
+    '📌 The extension auto-reconnects when Kai restarts.',
     '📌 You only need to do this ONCE — Chrome remembers it.',
   ].join('\n');
 }

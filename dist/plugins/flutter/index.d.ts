@@ -22,3 +22,4 @@ export declare class FlutterPlugin implements FrameworkPlugin {
     connect(app: DetectedApp): Promise<PluginConnection>;
 }
 export default FlutterPlugin;
+//# sourceMappingURL=index.d.ts.map

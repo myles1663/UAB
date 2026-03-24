@@ -5,7 +5,7 @@
  * giving agents a single consistent interface to any desktop app.
  *
  * This module is framework-agnostic — it can be imported by
- * ClaudeClaw, Lancelot, or any other AI agent runtime.
+ * Kai, Lancelot, or any other AI agent runtime.
  */
 export interface UIElement {
     id: string;
@@ -104,6 +104,83 @@ export interface AppState {
     menus: UIElement[];
     clipboard?: string;
 }
+export interface FocusedElementInfo {
+    pid: number;
+    name: string;
+    type: string;
+    automationId: string;
+    bounds: Bounds;
+    center: {
+        x: number;
+        y: number;
+    };
+    patterns: string[];
+    className: string;
+    /** UIA tree path from window root → focused element */
+    path: string[];
+    timestamp: number;
+}
+export interface PathSelector {
+    /** Tree path: ["Menu Bar", "File", "Save As..."] */
+    path?: string[];
+    /** Parent name context: find "Close" inside parent "Dialog" */
+    name?: string;
+    parent?: string;
+    /** Type filter for disambiguation */
+    type?: ElementType;
+    /** Match occurrence: 'first', 'last', or numeric index */
+    occurrence?: 'first' | 'last' | number;
+}
+export interface StateChangeEvent {
+    type: 'focus' | 'structureChanged' | 'propertyChanged' | 'windowOpened' | 'windowClosed' | 'menuOpened' | 'menuClosed';
+    timestamp: number;
+    pid: number;
+    element?: {
+        name: string;
+        type: string;
+        automationId: string;
+        bounds: Bounds;
+    };
+    details?: Record<string, unknown>;
+}
+export type StateChangeCallback = (event: StateChangeEvent) => void;
+export interface AtomicStep {
+    action: 'hotkey' | 'keypress' | 'click' | 'type' | 'wait';
+    /** Key name for keypress */
+    key?: string;
+    /** Key combo for hotkey: ["alt", "m"] */
+    keys?: string[];
+    /** Coordinates for click */
+    x?: number;
+    y?: number;
+    /** Text for type action */
+    text?: string;
+    /** Milliseconds for wait action */
+    ms?: number;
+}
+export interface AtomicChainDef {
+    pid: number;
+    steps: AtomicStep[];
+    /** Label for logging */
+    label?: string;
+}
+export interface AtomicChainResult {
+    success: boolean;
+    stepsCompleted: number;
+    totalSteps: number;
+    durationMs: number;
+    error?: string;
+}
+export interface SmartResolveResult {
+    success: boolean;
+    method: 'invoke' | 'focus-enter' | 'parent-invoke' | 'click-coordinates' | 'expand' | 'toggle';
+    element: {
+        name: string;
+        type: string;
+        bounds: Bounds;
+    };
+    error?: string;
+}
 export type UABEventType = 'elementChanged' | 'treeChanged' | 'stateChanged' | 'dataChanged';
 export interface UABEvent {
     type: UABEventType;
@@ -153,3 +230,4 @@ export interface ControlRoute {
     connection: PluginConnection;
     fallbacks: ControlMethod[];
 }
+//# sourceMappingURL=types.d.ts.map

@@ -6,7 +6,9 @@
  *   - Codex CLI (via Bash → CLI)
  *   - Custom agents (import as library)
  *   - MD-only agents (via CLI JSON output)
- *   - ClaudeClaw Telegram bot (via service mode)
+ *   - Kai Telegram bot (via service mode)
+ *
+ * NOTE: Synced from UAB standalone repo. ClaudeClaw references renamed to Kai.
  *
  * Design principles:
  *   - ZERO dependencies on any agent framework (no Grammy, no SQLite)
@@ -58,6 +60,7 @@ import { PermissionManager } from './permissions.js';
 import { withRetry } from './retry.js';
 import { ConnectionManager } from './connection-manager.js';
 import { AppRegistry } from './registry.js';
+import { CompositeEngine } from './composite.js';
 // ─── Connector ──────────────────────────────────────────────────
 export class UABConnector {
     registry;
@@ -402,6 +405,775 @@ export class UABConnector {
         const parts = app.path.replace(/\\/g, '/').split('/');
         return (parts[parts.length - 1] || app.name).toLowerCase();
     }
+    // ─── Composite / Spatial Map ────────────────────────────────────
+    /** Get the composite engine for advanced spatial queries. */
+    get composite() {
+        if (!this._composite) {
+            this._composite = new CompositeEngine(this);
+        }
+        return this._composite;
+    }
+    _composite = null;
+    /**
+     * Build a spatial map of the app — bounding rects organized into rows/columns.
+     * This is FASTER than screenshots and gives AI structured positional data.
+     */
+    async spatialMap(pid, options) {
+        this.ensureConnected(pid);
+        return this.composite.query(pid, options);
+    }
+    /**
+     * Get a text-based map of the app layout for AI consumption.
+     * Replaces screenshots in most use cases.
+     */
+    async textMap(pid, format) {
+        this.ensureConnected(pid);
+        const result = await this.composite.textMap(pid, { format });
+        return result.text;
+    }
+    /**
+     * Find elements by natural language description using spatial map + text reading.
+     * Faster than vision-based element finding.
+     */
+    async findByDescription(pid, description) {
+        this.ensureConnected(pid);
+        return this.composite.findElement(pid, description);
+    }
+    // ─── Feature 1: Real-time Focus Tracking ────────────────────────
+    /**
+     * Get the currently focused element in a window — <50ms via UIA FocusedElement.
+     * No connection required; works with any visible window.
+     */
+    async focused(pid) {
+        this.ensureStarted();
+        const { runPSRawInteractive } = await import('./ps-exec.js');
+        const script = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+
+$focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+if (-not $focused) {
+  @{ error = 'No focused element' } | ConvertTo-Json -Compress
+  exit
+}
+
+# Check if it belongs to our PID
+$focusedPid = $focused.Current.ProcessId
+if ($focusedPid -ne ${pid}) {
+  # Walk up to find if any ancestor belongs to our PID
+  $tw = [System.Windows.Automation.TreeWalker]::RawViewWalker
+  $check = $focused
+  $found = $false
+  while ($check) {
+    if ($check.Current.ProcessId -eq ${pid}) { $found = $true; break }
+    try { $check = $tw.GetParent($check) } catch { break }
+  }
+  if (-not $found) {
+    @{ error = "Focused element belongs to PID $focusedPid, not ${pid}" } | ConvertTo-Json -Compress
+    exit
+  }
+}
+
+# Build tree path from window root to focused element
+$path = @()
+$tw = [System.Windows.Automation.TreeWalker]::RawViewWalker
+$pathEl = $focused
+while ($pathEl) {
+  $pName = $pathEl.Current.Name -replace '[^\\x20-\\x7E]', ''
+  if ($pName) { $path = ,@($pName) + $path }
+  if ($pathEl.Current.ProcessId -ne ${pid}) { break }
+  try { $pathEl = $tw.GetParent($pathEl) } catch { break }
+}
+
+$patterns = @()
+try {
+  foreach ($p in $focused.GetSupportedPatterns()) {
+    $patterns += ($p.ProgrammaticName -replace 'PatternIdentifiers\\.Pattern', '' -replace 'Identifiers\\.Pattern', '')
+  }
+} catch {}
+
+$rect = $focused.Current.BoundingRectangle
+@{
+  pid = ${pid}
+  name = ($focused.Current.Name -replace '[^\\x20-\\x7E]', '')
+  type = ($focused.Current.ControlType.ProgrammaticName -replace 'ControlType\\.', '')
+  automationId = ($focused.Current.AutomationId -replace '[^\\x20-\\x7E]', '')
+  className = ($focused.Current.ClassName -replace '[^\\x20-\\x7E]', '')
+  x = if ($rect.X -gt -99999 -and $rect.X -lt 99999) { [int]$rect.X } else { 0 }
+  y = if ($rect.Y -gt -99999 -and $rect.Y -lt 99999) { [int]$rect.Y } else { 0 }
+  w = if ($rect.Width -gt 0 -and $rect.Width -lt 99999) { [int]$rect.Width } else { 0 }
+  h = if ($rect.Height -gt 0 -and $rect.Height -lt 99999) { [int]$rect.Height } else { 0 }
+  patterns = ($patterns -join ',')
+  path = $path
+} | ConvertTo-Json -Compress -Depth 3
+`;
+        try {
+            const raw = runPSRawInteractive(script, 5000);
+            const data = JSON.parse(raw);
+            if (data.error)
+                throw new Error(data.error);
+            return {
+                pid,
+                name: data.name || '',
+                type: data.type || 'Unknown',
+                automationId: data.automationId || '',
+                bounds: { x: data.x || 0, y: data.y || 0, width: data.w || 0, height: data.h || 0 },
+                center: { x: (data.x || 0) + (data.w || 0) / 2, y: (data.y || 0) + (data.h || 0) / 2 },
+                patterns: data.patterns ? data.patterns.split(',').filter(Boolean) : [],
+                className: data.className || '',
+                path: Array.isArray(data.path) ? data.path : [],
+                timestamp: Date.now(),
+            };
+        }
+        catch (err) {
+            throw new Error(`Focus tracking failed: ${err instanceof Error ? err.message : err}`);
+        }
+    }
+    // ─── Feature 2: Element Addressing by Path ─────────────────────
+    /**
+     * Find elements by tree path or parent context.
+     * Solves the "5 elements named Close" problem.
+     *
+     * @example
+     * // By tree path: Menu Bar → File → Save As...
+     * await connector.findByPath(pid, { path: ["File", "Save As..."] })
+     *
+     * // By parent context: "Close" inside "Settings dialog"
+     * await connector.findByPath(pid, { name: "Close", parent: "Settings" })
+     */
+    async findByPath(pid, selector) {
+        this.ensureStarted();
+        const { runPSRawInteractive } = await import('./ps-exec.js');
+        const pathJson = selector.path ? JSON.stringify(selector.path).replace(/'/g, "''") : '[]';
+        const name = (selector.name || '').replace(/'/g, "''");
+        const parent = (selector.parent || '').replace(/'/g, "''");
+        const typeFilter = (selector.type || '').replace(/'/g, "''");
+        const occurrence = selector.occurrence ?? 'first';
+        const script = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+
+$rootEl = [System.Windows.Automation.AutomationElement]::RootElement
+$procCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
+)
+$win = $rootEl.FindFirst([System.Windows.Automation.TreeScope]::Children, $procCond)
+if (-not $win) { Write-Output '[]'; exit }
+
+$pathArr = '${pathJson}' | ConvertFrom-Json
+$nameFilter = '${name}'
+$parentFilter = '${parent}'
+$typeFilter = '${typeFilter}'
+$tw = [System.Windows.Automation.TreeWalker]::RawViewWalker
+
+function Get-ElementPath($el, $remaining) {
+  if ($remaining.Count -eq 0) { return @($el) }
+  $target = $remaining[0]
+  $rest = @()
+  if ($remaining.Count -gt 1) { $rest = $remaining[1..($remaining.Count-1)] }
+
+  $child = $tw.GetFirstChild($el)
+  $results = @()
+  while ($child) {
+    $childName = $child.Current.Name -replace '[^\\x20-\\x7E]', ''
+    if ($childName -eq $target -or $childName -like "*$target*") {
+      $results += Get-ElementPath $child $rest
+    }
+    $child = $tw.GetNextSibling($child)
+  }
+  return $results
+}
+
+function Get-ByParent($el, $parentName, $childName) {
+  $allCond = [System.Windows.Automation.Condition]::TrueCondition
+  $allElements = $el.FindAll([System.Windows.Automation.TreeScope]::Descendants, $allCond)
+
+  $results = @()
+  foreach ($e in $allElements) {
+    $eName = $e.Current.Name -replace '[^\\x20-\\x7E]', ''
+    if ($eName -and $eName -like "*$childName*") {
+      # Check if any ancestor matches parent name
+      $p = $tw.GetParent($e)
+      $depth = 0
+      while ($p -and $depth -lt 10) {
+        $pName = $p.Current.Name -replace '[^\\x20-\\x7E]', ''
+        if ($pName -like "*$parentName*") {
+          $results += $e
+          break
+        }
+        $p = $tw.GetParent($p)
+        $depth++
+      }
+    }
+  }
+  return $results
+}
+
+$matches = @()
+if ($pathArr.Count -gt 0) {
+  $matches = Get-ElementPath $win $pathArr
+} elseif ($parentFilter) {
+  $matches = Get-ByParent $win $parentFilter $nameFilter
+} else {
+  # Simple name search — exact first, then partial match
+  $nameCond = New-Object System.Windows.Automation.PropertyCondition(
+    [System.Windows.Automation.AutomationElement]::NameProperty, '$nameFilter'
+  )
+  $found = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $nameCond)
+  foreach ($f in $found) { $matches += $f }
+
+  # If no exact match, try partial/contains match
+  if ($matches.Count -eq 0 -and $nameFilter) {
+    $allCond = [System.Windows.Automation.Condition]::TrueCondition
+    $allElements = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $allCond)
+    foreach ($el in $allElements) {
+      $eName = $el.Current.Name -replace '[^\\x20-\\x7E]', ''
+      if ($eName -like "*$nameFilter*") { $matches += $el }
+    }
+  }
+}
+
+# Apply type filter
+if ($typeFilter -and $matches.Count -gt 0) {
+  $matches = $matches | Where-Object {
+    ($_.Current.ControlType.ProgrammaticName -replace 'ControlType\\.', '') -like "*$typeFilter*"
+  }
+}
+
+$results = @()
+foreach ($m in $matches) {
+  $rect = $m.Current.BoundingRectangle
+  $patterns = @()
+  try {
+    foreach ($p in $m.GetSupportedPatterns()) {
+      $patterns += ($p.ProgrammaticName -replace 'PatternIdentifiers\\.Pattern', '' -replace 'Identifiers\\.Pattern', '')
+    }
+  } catch {}
+
+  $results += @{
+    name = ($m.Current.Name -replace '[^\\x20-\\x7E]', '')
+    type = ($m.Current.ControlType.ProgrammaticName -replace 'ControlType\\.', '')
+    automationId = ($m.Current.AutomationId -replace '[^\\x20-\\x7E]', '')
+    x = if ($rect.X -gt -99999 -and $rect.X -lt 99999) { [int]$rect.X } else { 0 }
+    y = if ($rect.Y -gt -99999 -and $rect.Y -lt 99999) { [int]$rect.Y } else { 0 }
+    w = if ($rect.Width -gt 0 -and $rect.Width -lt 99999) { [int]$rect.Width } else { 0 }
+    h = if ($rect.Height -gt 0 -and $rect.Height -lt 99999) { [int]$rect.Height } else { 0 }
+    patterns = ($patterns -join ',')
+  }
+}
+
+if ($results.Count -eq 0) { Write-Output '[]' }
+else { $results | ConvertTo-Json -Compress -Depth 2 }
+`;
+        try {
+            const raw = runPSRawInteractive(script, 15000);
+            let elements = JSON.parse(raw);
+            if (!Array.isArray(elements))
+                elements = [elements];
+            // Apply occurrence filter
+            if (occurrence === 'first' && elements.length > 1) {
+                elements = [elements[0]];
+            }
+            else if (occurrence === 'last' && elements.length > 1) {
+                elements = [elements[elements.length - 1]];
+            }
+            else if (typeof occurrence === 'number' && elements.length > occurrence) {
+                elements = [elements[occurrence]];
+            }
+            return elements;
+        }
+        catch (err) {
+            throw new Error(`Path search failed: ${err instanceof Error ? err.message : err}`);
+        }
+    }
+    // ─── Feature 3: State-change Listener ──────────────────────────
+    /**
+     * Watch for UIA state changes on a window. Polls efficiently at configurable interval.
+     * Returns a snapshot of changes since last check.
+     *
+     * For real-time push notifications, use the HTTP server's SSE endpoint.
+     */
+    async watchChanges(pid, durationMs = 3000, pollMs = 200) {
+        this.ensureStarted();
+        const { runPSRawInteractive } = await import('./ps-exec.js');
+        const script = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+
+$events = [System.Collections.ArrayList]::new()
+$pid = ${pid}
+
+$rootEl = [System.Windows.Automation.AutomationElement]::RootElement
+$procCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $pid
+)
+$win = $rootEl.FindFirst([System.Windows.Automation.TreeScope]::Children, $procCond)
+if (-not $win) { Write-Output '[]'; exit }
+
+# Snapshot initial state
+$initialFocus = [System.Windows.Automation.AutomationElement]::FocusedElement
+$initialFocusName = if ($initialFocus) { $initialFocus.Current.Name } else { '' }
+$initialTitle = $win.Current.Name
+
+# Register UIA event handlers
+$handler = {
+  param($sender, $e)
+  $script:events.Add(@{
+    type = 'structureChanged'
+    timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    name = if ($sender) { try { $sender.Current.Name -replace '[^\\x20-\\x7E]', '' } catch { '' } } else { '' }
+  }) | Out-Null
+}
+
+try {
+  [System.Windows.Automation.Automation]::AddStructureChangedEventHandler(
+    $win,
+    [System.Windows.Automation.TreeScope]::Subtree,
+    $handler
+  )
+} catch {}
+
+# Poll for focus changes and window changes
+$endTime = [DateTimeOffset]::UtcNow.AddMilliseconds(${durationMs})
+$lastFocusName = $initialFocusName
+
+while ([DateTimeOffset]::UtcNow -lt $endTime) {
+  Start-Sleep -Milliseconds ${pollMs}
+
+  # Check focus change
+  try {
+    $currentFocus = [System.Windows.Automation.AutomationElement]::FocusedElement
+    $currentFocusName = if ($currentFocus) { $currentFocus.Current.Name -replace '[^\\x20-\\x7E]', '' } else { '' }
+    if ($currentFocusName -ne $lastFocusName) {
+      $rect = $currentFocus.Current.BoundingRectangle
+      $events.Add(@{
+        type = 'focus'
+        timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        name = $currentFocusName
+        elType = ($currentFocus.Current.ControlType.ProgrammaticName -replace 'ControlType\\.', '')
+        automationId = ($currentFocus.Current.AutomationId -replace '[^\\x20-\\x7E]', '')
+        x = if ($rect.X -gt -99999) { [int]$rect.X } else { 0 }
+        y = if ($rect.Y -gt -99999) { [int]$rect.Y } else { 0 }
+        w = if ($rect.Width -gt 0) { [int]$rect.Width } else { 0 }
+        h = if ($rect.Height -gt 0) { [int]$rect.Height } else { 0 }
+      }) | Out-Null
+      $lastFocusName = $currentFocusName
+    }
+  } catch {}
+
+  # Check window title change
+  try {
+    $currentTitle = $win.Current.Name
+    if ($currentTitle -ne $initialTitle) {
+      $events.Add(@{
+        type = 'propertyChanged'
+        timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        name = ($currentTitle -replace '[^\\x20-\\x7E]', '')
+        property = 'windowTitle'
+        oldValue = ($initialTitle -replace '[^\\x20-\\x7E]', '')
+      }) | Out-Null
+      $initialTitle = $currentTitle
+    }
+  } catch {}
+}
+
+# Cleanup handlers
+try {
+  [System.Windows.Automation.Automation]::RemoveAllEventHandlers()
+} catch {}
+
+if ($events.Count -eq 0) { Write-Output '[]' }
+else { $events | ConvertTo-Json -Compress -Depth 3 }
+`;
+        try {
+            const raw = runPSRawInteractive(script, durationMs + 5000);
+            let events = JSON.parse(raw);
+            if (!Array.isArray(events))
+                events = [events];
+            return events.map((e) => ({
+                type: e.type || 'propertyChanged',
+                timestamp: e.timestamp || Date.now(),
+                pid,
+                element: e.name ? {
+                    name: e.name,
+                    type: e.elType || '',
+                    automationId: e.automationId || '',
+                    bounds: { x: e.x || 0, y: e.y || 0, width: e.w || 0, height: e.h || 0 },
+                } : undefined,
+                details: e.property ? { property: e.property, oldValue: e.oldValue } : undefined,
+            }));
+        }
+        catch (err) {
+            throw new Error(`Watch failed: ${err instanceof Error ? err.message : err}`);
+        }
+    }
+    // ─── Feature 4: Atomic Action Chains ───────────────────────────
+    /**
+     * Execute a sequence of actions in a SINGLE PowerShell session.
+     * No focus-stealing between steps. All actions fire atomically.
+     *
+     * @example
+     * await connector.atomicChain({
+     *   pid: 38184,
+     *   steps: [
+     *     { action: 'hotkey', keys: ['alt', 'm'] },
+     *     { action: 'wait', ms: 300 },
+     *     { action: 'keypress', key: 'Down' },
+     *     { action: 'keypress', key: 'Enter' },
+     *   ]
+     * });
+     */
+    async atomicChain(chain) {
+        this.ensureStarted();
+        const { runPSRawInteractive } = await import('./ps-exec.js');
+        // Build PowerShell script for all steps in one session
+        const stepScripts = [];
+        for (const step of chain.steps) {
+            switch (step.action) {
+                case 'wait':
+                    stepScripts.push(`Start-Sleep -Milliseconds ${step.ms || 200}`);
+                    break;
+                case 'keypress':
+                    stepScripts.push(`[System.Windows.Forms.SendKeys]::SendWait('${this.psKeyMap(step.key || '')}')`);
+                    break;
+                case 'hotkey': {
+                    const keys = step.keys || [];
+                    const modKeys = [];
+                    const mainKeys = [];
+                    for (const k of keys) {
+                        const lower = k.toLowerCase();
+                        if (['ctrl', 'control'].includes(lower))
+                            modKeys.push('^');
+                        else if (['alt'].includes(lower))
+                            modKeys.push('%');
+                        else if (['shift'].includes(lower))
+                            modKeys.push('+');
+                        else
+                            mainKeys.push(this.psKeyMap(k));
+                    }
+                    const combo = modKeys.join('') + '(' + mainKeys.join('') + ')';
+                    stepScripts.push(`[System.Windows.Forms.SendKeys]::SendWait('${combo}')`);
+                    break;
+                }
+                case 'click': {
+                    const cx = step.x || 0;
+                    const cy = step.y || 0;
+                    stepScripts.push(`
+[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${cx}, ${cy})
+$sig = @'
+[DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);
+'@
+$mouse = Add-Type -MemberDefinition $sig -Name 'MouseInput' -Namespace 'Win32' -PassThru
+$mouse::mouse_event(0x0002, 0, 0, 0, 0)
+$mouse::mouse_event(0x0004, 0, 0, 0, 0)`);
+                    break;
+                }
+                case 'type': {
+                    const escaped = (step.text || '').replace(/'/g, "''").replace(/[+^%~(){}[\]]/g, '{$&}');
+                    stepScripts.push(`[System.Windows.Forms.SendKeys]::SendWait('${escaped}')`);
+                    break;
+                }
+            }
+        }
+        const script = `
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# Focus the target window first
+$sig2 = @'
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+[DllImport("user32.dll")] public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+'@
+Add-Type -MemberDefinition $sig2 -Name 'WinAPI' -Namespace 'Win32Focus' -ErrorAction SilentlyContinue
+
+$proc = Get-Process -Id ${chain.pid} -ErrorAction SilentlyContinue
+if ($proc -and $proc.MainWindowHandle) {
+  [Win32Focus.WinAPI]::ShowWindow($proc.MainWindowHandle, 9) | Out-Null
+  [Win32Focus.WinAPI]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+  Start-Sleep -Milliseconds 100
+}
+
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$completed = 0
+$totalSteps = ${chain.steps.length}
+$error_msg = ''
+
+try {
+${stepScripts.map((s, i) => `  # Step ${i + 1}\n  ${s}\n  $completed = ${i + 1}`).join('\n')}
+} catch {
+  $error_msg = $_.Exception.Message -replace '[^\\x20-\\x7E]', ''
+}
+
+$sw.Stop()
+@{
+  success = ($completed -eq $totalSteps -and $error_msg -eq '')
+  stepsCompleted = $completed
+  totalSteps = $totalSteps
+  durationMs = $sw.ElapsedMilliseconds
+  error = $error_msg
+} | ConvertTo-Json -Compress
+`;
+        try {
+            const raw = runPSRawInteractive(script, 30000);
+            return JSON.parse(raw);
+        }
+        catch (err) {
+            return {
+                success: false,
+                stepsCompleted: 0,
+                totalSteps: chain.steps.length,
+                durationMs: 0,
+                error: err instanceof Error ? err.message : String(err),
+            };
+        }
+    }
+    /** Map key names to PowerShell SendKeys format */
+    psKeyMap(key) {
+        const map = {
+            'enter': '{ENTER}', 'return': '{ENTER}', 'tab': '{TAB}',
+            'escape': '{ESC}', 'esc': '{ESC}', 'backspace': '{BS}', 'delete': '{DEL}',
+            'up': '{UP}', 'down': '{DOWN}', 'left': '{LEFT}', 'right': '{RIGHT}',
+            'home': '{HOME}', 'end': '{END}', 'pageup': '{PGUP}', 'pagedown': '{PGDN}',
+            'f1': '{F1}', 'f2': '{F2}', 'f3': '{F3}', 'f4': '{F4}',
+            'f5': '{F5}', 'f6': '{F6}', 'f7': '{F7}', 'f8': '{F8}',
+            'f9': '{F9}', 'f10': '{F10}', 'f11': '{F11}', 'f12': '{F12}',
+            'space': ' ', 'insert': '{INSERT}',
+        };
+        return map[key.toLowerCase()] || key;
+    }
+    // ─── Feature 5: Smart Element Resolution ───────────────────────
+    /**
+     * Find an element by name and invoke it using the BEST available method.
+     * Tries in order:
+     *   1. InvokePattern (standard UIA invoke)
+     *   2. SetFocus → Enter key
+     *   3. Find nearest invokable parent/sibling
+     *   4. Calculate bounding rect center → click at coordinates
+     *   5. ExpandCollapsePattern
+     *   6. TogglePattern
+     *
+     * This is the "it just works" method — if the element is visible, we WILL activate it.
+     */
+    async smartInvoke(pid, name, options) {
+        this.ensureStarted();
+        const { runPSRawInteractive } = await import('./ps-exec.js');
+        const escapedName = name.replace(/'/g, "''");
+        const escapedParent = (options?.parent || '').replace(/'/g, "''");
+        const typeFilter = (options?.type || '').replace(/'/g, "''");
+        const occurrence = options?.occurrence ?? 'last';
+        const script = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$sig = @'
+[DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+'@
+Add-Type -MemberDefinition $sig -Name 'SmartInput' -Namespace 'Win32Smart' -ErrorAction SilentlyContinue
+
+$rootEl = [System.Windows.Automation.AutomationElement]::RootElement
+$procCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ProcessIdProperty, ${pid}
+)
+$win = $rootEl.FindFirst([System.Windows.Automation.TreeScope]::Children, $procCond)
+if (-not $win) {
+  @{ success = $false; error = 'Window not found'; method = '' } | ConvertTo-Json -Compress
+  exit
+}
+
+# Find matching elements
+$nameCond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::NameProperty, '${escapedName}'
+)
+$allMatches = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $nameCond)
+
+# Also try partial match if no exact match
+if ($allMatches.Count -eq 0) {
+  $allCond = [System.Windows.Automation.Condition]::TrueCondition
+  $allElements = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $allCond)
+  $partialMatches = @()
+  foreach ($el in $allElements) {
+    $eName = $el.Current.Name -replace '[^\\x20-\\x7E]', ''
+    if ($eName -like "*${escapedName}*") { $partialMatches += $el }
+  }
+  if ($partialMatches.Count -gt 0) { $allMatches = $partialMatches }
+}
+
+if ($allMatches.Count -eq 0) {
+  @{ success = $false; error = "No element named '${escapedName}' found"; method = '' } | ConvertTo-Json -Compress
+  exit
+}
+
+# Apply parent filter
+$matches = @()
+if ('${escapedParent}') {
+  $tw = [System.Windows.Automation.TreeWalker]::RawViewWalker
+  foreach ($m in $allMatches) {
+    $p = $tw.GetParent($m)
+    $depth = 0
+    while ($p -and $depth -lt 10) {
+      $pName = $p.Current.Name -replace '[^\\x20-\\x7E]', ''
+      if ($pName -like "*${escapedParent}*") { $matches += $m; break }
+      $p = $tw.GetParent($p)
+      $depth++
+    }
+  }
+} else {
+  foreach ($m in $allMatches) { $matches += $m }
+}
+
+# Apply type filter
+if ('${typeFilter}' -and $matches.Count -gt 0) {
+  $matches = @($matches | Where-Object {
+    ($_.Current.ControlType.ProgrammaticName -replace 'ControlType\\.', '') -like "*${typeFilter}*"
+  })
+}
+
+if ($matches.Count -eq 0) {
+  @{ success = $false; error = "No matching element after filters"; method = '' } | ConvertTo-Json -Compress
+  exit
+}
+
+# Select occurrence
+$target = $null
+$occ = '${occurrence}'
+if ($occ -eq 'last') {
+  $maxY = -999999
+  foreach ($m in $matches) {
+    $y = $m.Current.BoundingRectangle.Y
+    if ($y -gt $maxY) { $maxY = $y; $target = $m }
+  }
+} elseif ($occ -eq 'first') {
+  $minY = 999999
+  foreach ($m in $matches) {
+    $y = $m.Current.BoundingRectangle.Y
+    if ($y -lt $minY) { $minY = $y; $target = $m }
+  }
+} else {
+  $idx = [int]$occ
+  if ($idx -lt $matches.Count) { $target = $matches[$idx] }
+  else { $target = $matches[0] }
+}
+
+$rect = $target.Current.BoundingRectangle
+$elInfo = @{
+  name = ($target.Current.Name -replace '[^\\x20-\\x7E]', '')
+  type = ($target.Current.ControlType.ProgrammaticName -replace 'ControlType\\.', '')
+  x = if ($rect.X -gt -99999) { [int]$rect.X } else { 0 }
+  y = if ($rect.Y -gt -99999) { [int]$rect.Y } else { 0 }
+  w = if ($rect.Width -gt 0) { [int]$rect.Width } else { 0 }
+  h = if ($rect.Height -gt 0) { [int]$rect.Height } else { 0 }
+}
+
+# METHOD 1: Try InvokePattern
+try {
+  $invokePattern = $target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+  $invokePattern.Invoke()
+  @{ success = $true; method = 'invoke'; element = $elInfo } | ConvertTo-Json -Compress -Depth 3
+  exit
+} catch {}
+
+# METHOD 2: Try SetFocus + Enter
+try {
+  $target.SetFocus()
+  Start-Sleep -Milliseconds 100
+  [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+  @{ success = $true; method = 'focus-enter'; element = $elInfo } | ConvertTo-Json -Compress -Depth 3
+  exit
+} catch {}
+
+# METHOD 3: Try nearest invokable parent
+try {
+  $tw = [System.Windows.Automation.TreeWalker]::RawViewWalker
+  $parentEl = $tw.GetParent($target)
+  $depth = 0
+  while ($parentEl -and $depth -lt 5) {
+    try {
+      $pInvoke = $parentEl.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+      $pInvoke.Invoke()
+      $elInfo.method_parent = ($parentEl.Current.Name -replace '[^\\x20-\\x7E]', '')
+      @{ success = $true; method = 'parent-invoke'; element = $elInfo } | ConvertTo-Json -Compress -Depth 3
+      exit
+    } catch {}
+    $parentEl = $tw.GetParent($parentEl)
+    $depth++
+  }
+} catch {}
+
+# METHOD 4: Click at bounding rect center (the fallback that always works)
+try {
+  if ($rect.Width -gt 0 -and $rect.Height -gt 0 -and $rect.X -gt -99999) {
+    $centerX = [int]($rect.X + $rect.Width / 2)
+    $centerY = [int]($rect.Y + $rect.Height / 2)
+
+    # Bring window to front
+    $proc = Get-Process -Id ${pid} -ErrorAction SilentlyContinue
+    if ($proc -and $proc.MainWindowHandle) {
+      [Win32Smart.SmartInput]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+    }
+    Start-Sleep -Milliseconds 50
+
+    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point($centerX, $centerY)
+    Start-Sleep -Milliseconds 30
+    [Win32Smart.SmartInput]::mouse_event(0x0002, 0, 0, 0, 0)
+    [Win32Smart.SmartInput]::mouse_event(0x0004, 0, 0, 0, 0)
+
+    $elInfo.clickedAt = @{ x = $centerX; y = $centerY }
+    @{ success = $true; method = 'click-coordinates'; element = $elInfo } | ConvertTo-Json -Compress -Depth 3
+    exit
+  }
+} catch {}
+
+# METHOD 5: Try ExpandCollapsePattern
+try {
+  $expandPattern = $target.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+  $expandPattern.Expand()
+  @{ success = $true; method = 'expand'; element = $elInfo } | ConvertTo-Json -Compress -Depth 3
+  exit
+} catch {}
+
+# METHOD 6: Try TogglePattern
+try {
+  $togglePattern = $target.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+  $togglePattern.Toggle()
+  @{ success = $true; method = 'toggle'; element = $elInfo } | ConvertTo-Json -Compress -Depth 3
+  exit
+} catch {}
+
+@{ success = $false; error = 'All invoke methods failed'; method = ''; element = $elInfo } | ConvertTo-Json -Compress -Depth 3
+`;
+        try {
+            const raw = runPSRawInteractive(script, 20000);
+            const data = JSON.parse(raw);
+            return {
+                success: data.success,
+                method: data.method || 'unknown',
+                element: {
+                    name: data.element?.name || name,
+                    type: data.element?.type || '',
+                    bounds: {
+                        x: data.element?.x || 0,
+                        y: data.element?.y || 0,
+                        width: data.element?.w || 0,
+                        height: data.element?.h || 0,
+                    },
+                },
+                error: data.error,
+            };
+        }
+        catch (err) {
+            return {
+                success: false,
+                method: 'invoke',
+                element: { name, type: '', bounds: { x: 0, y: 0, width: 0, height: 0 } },
+                error: err instanceof Error ? err.message : String(err),
+            };
+        }
+    }
+    // ─── Helpers ────────────────────────────────────────────────────
     /** Count elements recursively. */
     countElements(elements) {
         let count = elements.length;

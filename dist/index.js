@@ -22,7 +22,7 @@
 export { UABConnector } from './connector.js';
 // ─── App Registry ────────────────────────────────────────────────
 export { AppRegistry } from './registry.js';
-// ─── Core Service (ClaudeClaw integration) ───────────────────────
+// ─── Core Service (Kai integration) ──────────────────────────────
 export { UABService, uab } from './service.js';
 // ─── Detection & Routing ────────────────────────────────────────
 export { FrameworkDetector } from './detector.js';
@@ -32,6 +32,9 @@ export { ElementCache } from './cache.js';
 export { ConnectionManager } from './connection-manager.js';
 export { PermissionManager } from './permissions.js';
 export { withRetry, isRetryable, retryable, withTimeout } from './retry.js';
+// ─── Spatial Map & Composite Engine ─────────────────────────────
+export { buildSpatialMap, SpatialIndex, renderTextMap, renderJsonMap } from './spatial.js';
+export { CompositeEngine } from './composite.js';
 // ─── Action Chains ──────────────────────────────────────────────
 export { ChainExecutor, buildFormChain, buildMenuChain } from './chains.js';
 // ─── Plugins ────────────────────────────────────────────────────
@@ -43,6 +46,14 @@ export { GtkPlugin } from './plugins/gtk/index.js';
 export { JavaPlugin } from './plugins/java/index.js';
 export { FlutterPlugin } from './plugins/flutter/index.js';
 export { OfficePlugin } from './plugins/office/index.js';
+// ─── Environment Detection ──────────────────────────────────────
+export { detectEnvironment, getDefaults, resetEnvironment, env } from './environment.js';
+// ─── HTTP Server (Server-Side Access) ───────────────────────────
+export { UABServer } from './server.js';
+// ─── Agent SDK ─────────────────────────────────────────────────
+export { AgentSDK, desktop } from './sdk.js';
+// ─── Agent Prompt Templates ────────────────────────────────────
+export { getAgentPrompt, getClaudeMdSnippet, getMcpConfig } from './agent-prompt.js';
 // ─── Logger ─────────────────────────────────────────────────────
 export { createLogger, closeLogger } from './logger.js';
 //# sourceMappingURL=index.js.map

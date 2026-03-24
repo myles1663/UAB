@@ -27,7 +27,7 @@ export type { ConnectorOptions, ConnectionInfo } from './connector.js';
 export { AppRegistry } from './registry.js';
 export type { AppProfile, RegistrySnapshot, RegistryOptions } from './registry.js';
 
-// ─── Core Service (ClaudeClaw integration) ───────────────────────
+// ─── Core Service (Kai integration) ──────────────────────────────
 export { UABService, uab } from './service.js';
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -79,6 +79,13 @@ export type {
 export { withRetry, isRetryable, retryable, withTimeout } from './retry.js';
 export type { RetryOptions } from './retry.js';
 
+// ─── Spatial Map & Composite Engine ─────────────────────────────
+export { buildSpatialMap, SpatialIndex, renderTextMap, renderJsonMap } from './spatial.js';
+export type { SpatialElement, SpatialRow, SpatialMap, SpatialQuery, NearestResult } from './spatial.js';
+
+export { CompositeEngine } from './composite.js';
+export type { CompositeResult, CompositeOptions } from './composite.js';
+
 // ─── Action Chains ──────────────────────────────────────────────
 export { ChainExecutor, buildFormChain, buildMenuChain } from './chains.js';
 export type {
@@ -112,6 +119,13 @@ export type { RuntimeMode, EnvironmentInfo, EnvironmentDefaults } from './enviro
 // ─── HTTP Server (Server-Side Access) ───────────────────────────
 export { UABServer } from './server.js';
 export type { ServerOptions } from './server.js';
+
+// ─── Agent SDK ─────────────────────────────────────────────────
+export { AgentSDK, desktop } from './sdk.js';
+
+// ─── Agent Prompt Templates ────────────────────────────────────
+export { getAgentPrompt, getClaudeMdSnippet, getMcpConfig } from './agent-prompt.js';
+export type { PromptMode, PromptOptions } from './agent-prompt.js';
 
 // ─── Logger ─────────────────────────────────────────────────────
 export { createLogger, closeLogger } from './logger.js';

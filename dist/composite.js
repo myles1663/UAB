@@ -1,0 +1,257 @@
+/**
+ * UAB Composite Query Engine
+ *
+ * The fastest, most capable method of computer use.
+ *
+ * Combines ALL available data sources in speed-priority order:
+ *   1. UIA Tree     (⚡ instant) — element IDs, types, states, structure
+ *   2. Bounding Rects (⚡ instant) — spatial positions, sizes → spatial map
+ *   3. Text Reading  (⚡ fast) — TextPattern/ValuePattern content extraction
+ *   4. Vision        (🐌 slow) — screenshot + Claude Vision (ONLY when needed)
+ *
+ * Philosophy:
+ *   - Data is FASTER than images for AI to process
+ *   - The spatial map REPLACES screenshots in most cases
+ *   - Vision is complementary (verification, complex visuals), not primary
+ *   - Every extra tool closes another gap — use ALL of them
+ */
+import { buildSpatialMap, SpatialIndex, renderTextMap, renderJsonMap } from './spatial.js';
+// ─── Helpers ───────────────────────────────────────────────────
+/** Derive window bounds from element bounding rects when state() returns zeros. */
+function deriveWindowBounds(tree) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    function walk(elements) {
+        for (const el of elements) {
+            if (el.bounds.width > 0 && el.bounds.height > 0) {
+                minX = Math.min(minX, el.bounds.x);
+                minY = Math.min(minY, el.bounds.y);
+                maxX = Math.max(maxX, el.bounds.x + el.bounds.width);
+                maxY = Math.max(maxY, el.bounds.y + el.bounds.height);
+            }
+            walk(el.children);
+        }
+    }
+    walk(tree);
+    if (minX === Infinity)
+        return { x: 0, y: 0, width: 0, height: 0 };
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+const TEXT_BEARING_TYPES = new Set([
+    'textfield', 'textarea', 'label', 'heading', 'link',
+    'button', 'menuitem', 'listitem', 'treeitem', 'tab',
+    'tablecell', 'tooltip', 'statusbar',
+]);
+// ─── Composite Engine ──────────────────────────────────────────
+export class CompositeEngine {
+    connector;
+    constructor(connector) {
+        this.connector = connector;
+    }
+    /**
+     * Run a full composite query on a connected app.
+     * Returns spatial map + text content + app state in one call.
+     */
+    async query(pid, options) {
+        const opts = {
+            maxDepth: options?.maxDepth ?? 12,
+            rowThreshold: options?.rowThreshold ?? 15,
+            readText: options?.readText ?? true,
+            textReadLimit: options?.textReadLimit ?? 200,
+            textTypes: options?.textTypes ?? Array.from(TEXT_BEARING_TYPES),
+            includeVision: options?.includeVision ?? false,
+        };
+        const totalStart = Date.now();
+        const textContent = new Map();
+        // Step 1: Enumerate UI tree + get app state (parallel)
+        const enumStart = Date.now();
+        const [tree, appState] = await Promise.all([
+            this.connector.enumerate(pid, opts.maxDepth),
+            this.connector.state(pid),
+        ]);
+        const enumerateMs = Date.now() - enumStart;
+        // Step 2: Build spatial map from bounding rects
+        const spatialStart = Date.now();
+        let windowBounds = {
+            x: appState.window.position.x,
+            y: appState.window.position.y,
+            width: appState.window.size.width,
+            height: appState.window.size.height,
+        };
+        // If state returned zero bounds, derive from element bounding rects
+        if (windowBounds.width === 0 || windowBounds.height === 0) {
+            windowBounds = deriveWindowBounds(tree);
+        }
+        const spatialMap = buildSpatialMap(pid, tree, windowBounds, {
+            maxDepth: opts.maxDepth,
+            rowThreshold: opts.rowThreshold,
+        });
+        const index = new SpatialIndex(spatialMap);
+        const spatialBuildMs = Date.now() - spatialStart;
+        // Step 3: Text reading enrichment
+        let textReadMs = 0;
+        if (opts.readText) {
+            const textStart = Date.now();
+            await this.enrichWithText(pid, index, textContent, opts);
+            textReadMs = Date.now() - textStart;
+        }
+        // Step 4: Vision (optional, only if requested)
+        let visionMs;
+        if (opts.includeVision) {
+            const visionStart = Date.now();
+            try {
+                await this.connector.screenshot(pid);
+            }
+            catch {
+                // Vision is optional — don't fail the whole query
+            }
+            visionMs = Date.now() - visionStart;
+        }
+        return {
+            pid,
+            spatialMap,
+            index,
+            textContent,
+            appState,
+            timing: {
+                enumerateMs,
+                spatialBuildMs,
+                textReadMs,
+                totalMs: Date.now() - totalStart,
+                visionMs,
+            },
+            textEnrichedCount: textContent.size,
+        };
+    }
+    /**
+     * Quick spatial map — skip text reading for maximum speed.
+     * Use when you just need positions, not content.
+     */
+    async quickMap(pid) {
+        const start = Date.now();
+        const [tree, appState] = await Promise.all([
+            this.connector.enumerate(pid),
+            this.connector.state(pid),
+        ]);
+        const windowBounds = {
+            x: appState.window.position.x,
+            y: appState.window.position.y,
+            width: appState.window.size.width,
+            height: appState.window.size.height,
+        };
+        const map = buildSpatialMap(pid, tree, windowBounds);
+        const index = new SpatialIndex(map);
+        return { map, index, timing: Date.now() - start };
+    }
+    /**
+     * Generate a text map string for AI consumption.
+     * This is the primary output — replaces screenshots.
+     */
+    async textMap(pid, options) {
+        const result = await this.query(pid, options);
+        const format = options?.format ?? 'detailed';
+        let text;
+        if (format === 'json') {
+            text = JSON.stringify(renderJsonMap(result.spatialMap), null, 2);
+        }
+        else {
+            text = renderTextMap(result.spatialMap, {
+                showBounds: true,
+                showContent: true,
+                compact: format === 'compact',
+            });
+        }
+        // Append timing info
+        const t = result.timing;
+        text += `\n\n--- Timing: enumerate=${t.enumerateMs}ms, spatial=${t.spatialBuildMs}ms, text=${t.textReadMs}ms, total=${t.totalMs}ms ---`;
+        return { text, timing: result.timing.totalMs };
+    }
+    /**
+     * Find an element by description using the spatial map.
+     * Faster than screenshot-based element finding.
+     */
+    async findElement(pid, description) {
+        const result = await this.query(pid, { readText: true });
+        // Try exact label match first
+        const exactMatch = result.index.query({ label: description });
+        if (exactMatch.length > 0)
+            return exactMatch;
+        // Try matching against text content
+        const lower = description.toLowerCase();
+        const textMatches = result.index.all().filter(el => {
+            const text = result.textContent.get(el.id);
+            if (text && text.toLowerCase().includes(lower))
+                return true;
+            if (el.label.toLowerCase().includes(lower))
+                return true;
+            return false;
+        });
+        return textMatches;
+    }
+    /**
+     * Click the nearest matching element.
+     * Spatial-map-first approach (no screenshots needed).
+     */
+    async clickElement(pid, description) {
+        const matches = await this.findElement(pid, description);
+        if (matches.length === 0) {
+            return { success: false, error: `No element found matching "${description}"` };
+        }
+        // Pick the best match (first = closest label match)
+        const target = matches[0];
+        return this.connector.act(pid, target.id, 'click');
+    }
+    /**
+     * Type into the nearest matching text field.
+     */
+    async typeInto(pid, fieldDescription, text) {
+        const matches = await this.findElement(pid, fieldDescription);
+        const textFields = matches.filter(m => m.type === 'textfield' || m.type === 'textarea');
+        const target = textFields.length > 0 ? textFields[0] : matches[0];
+        if (!target) {
+            return { success: false, error: `No text field found matching "${fieldDescription}"` };
+        }
+        // Click to focus, then type
+        await this.connector.act(pid, target.id, 'click');
+        return this.connector.act(pid, target.id, 'type', { text });
+    }
+    // ─── Private Helpers ─────────────────────────────────────────
+    /**
+     * Enrich spatial elements with text content.
+     *
+     * Strategy (speed-first):
+     * 1. Labels ARE text — most elements already have their text in el.label (FREE)
+     * 2. Only call readDocument on textareas/textfields — these are the ones
+     *    where the label says "Text editor" but the actual content is different
+     * 3. This keeps text enrichment under 1-2 seconds instead of 80+
+     */
+    async enrichWithText(pid, index, textContent, opts) {
+        // Step 1: Labels as text (instant — no API calls)
+        for (const el of index.all()) {
+            if (el.label && el.label.length > 0) {
+                textContent.set(el.id, el.label);
+                el.text = el.label;
+            }
+        }
+        // Step 2: Only fetch actual text content for text input areas
+        // These are elements where the label is just a name ("Text editor")
+        // but the real content is what the user typed
+        const deepReadTypes = new Set(['textarea', 'textfield']);
+        const candidates = index.all()
+            .filter(el => deepReadTypes.has(el.type) && el.visible)
+            .slice(0, 10); // Very limited — these are slow
+        if (candidates.length === 0)
+            return;
+        const results = await Promise.allSettled(candidates.map(el => this.connector.act(pid, el.id, 'readDocument')
+            .then(r => ({ id: el.id, text: r.success ? String(r.result || '') : '' }))
+            .catch(() => ({ id: el.id, text: '' }))));
+        for (const r of results) {
+            if (r.status === 'fulfilled' && r.value.text) {
+                textContent.set(r.value.id, r.value.text);
+                const el = index.all().find(e => e.id === r.value.id);
+                if (el)
+                    el.text = r.value.text;
+            }
+        }
+    }
+}
+//# sourceMappingURL=composite.js.map

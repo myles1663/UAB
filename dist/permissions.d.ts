@@ -71,3 +71,4 @@ export declare class PermissionManager {
     private isRateLimited;
     private incrementRateLimit;
 }
+//# sourceMappingURL=permissions.d.ts.map

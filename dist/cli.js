@@ -351,6 +351,129 @@ async function main() {
                 }
                 break;
             }
+            // ─── Spatial Map & Composite Query ──────────────────────
+            case 'map': {
+                const pidStr = args[0];
+                if (!pidStr)
+                    error('Usage: map <pid> [--format detailed|compact|json] [--depth N] [--no-text]');
+                const pid = parseInt(pidStr, 10);
+                const format = (flags.format || 'detailed');
+                const maxDepth = parseInt(flags.depth || '12', 10);
+                const readText = flags['no-text'] !== 'true';
+                await connector.connect(pid);
+                if (format === 'json') {
+                    const result = await connector.spatialMap(pid, { maxDepth, readText });
+                    const { renderJsonMap } = await import('./spatial.js');
+                    output({
+                        ...renderJsonMap(result.spatialMap),
+                        textContent: Object.fromEntries(result.textContent),
+                        timing: result.timing,
+                    });
+                }
+                else {
+                    const text = await connector.textMap(pid, format);
+                    // For text formats, output as a single string (more readable)
+                    console.log(text);
+                }
+                await connector.disconnectAll();
+                break;
+            }
+            case 'composite': {
+                const pidStr = args[0];
+                if (!pidStr)
+                    error('Usage: composite <pid> [--depth N] [--no-text] [--vision]');
+                const pid = parseInt(pidStr, 10);
+                const maxDepth = parseInt(flags.depth || '12', 10);
+                const readText = flags['no-text'] !== 'true';
+                const includeVision = flags.vision === 'true';
+                await connector.connect(pid);
+                const result = await connector.spatialMap(pid, {
+                    maxDepth,
+                    readText,
+                    includeVision,
+                });
+                output({
+                    pid,
+                    totalElements: result.spatialMap.totalElements,
+                    rowCount: result.spatialMap.rows.length,
+                    window: result.spatialMap.windowBounds,
+                    textEnrichedCount: result.textEnrichedCount,
+                    timing: result.timing,
+                    rows: result.spatialMap.rows.map(row => ({
+                        index: row.index,
+                        y: row.y,
+                        height: row.height,
+                        elements: row.elements.map(el => ({
+                            id: el.id,
+                            type: el.type,
+                            label: el.label || undefined,
+                            text: el.text || result.textContent.get(el.id) || undefined,
+                            bounds: el.bounds,
+                            center: el.center,
+                            enabled: el.enabled,
+                            actions: el.actions,
+                            row: el.row,
+                            col: el.col,
+                        })),
+                    })),
+                });
+                await connector.disconnectAll();
+                break;
+            }
+            case 'find-element': {
+                const pidStr = args[0];
+                const description = args.slice(1).join(' ') || flags.description;
+                if (!pidStr || !description)
+                    error('Usage: find-element <pid> <description>  (e.g., find-element 1234 Submit button)');
+                const pid = parseInt(pidStr, 10);
+                await connector.connect(pid);
+                const matches = await connector.findByDescription(pid, description);
+                output({
+                    pid,
+                    query: description,
+                    count: matches.length,
+                    matches: matches.slice(0, 10).map(el => ({
+                        id: el.id,
+                        type: el.type,
+                        label: el.label,
+                        text: el.text,
+                        bounds: el.bounds,
+                        center: el.center,
+                        row: el.row,
+                        col: el.col,
+                    })),
+                });
+                await connector.disconnectAll();
+                break;
+            }
+            case 'near': {
+                const pidStr = args[0];
+                const x = parseInt(args[1] || flags.x || '', 10);
+                const y = parseInt(args[2] || flags.y || '', 10);
+                const radius = parseInt(flags.radius || '100', 10);
+                if (!pidStr || isNaN(x) || isNaN(y))
+                    error('Usage: near <pid> <x> <y> [--radius N]');
+                const pid = parseInt(pidStr, 10);
+                await connector.connect(pid);
+                const result = await connector.spatialMap(pid, { readText: false });
+                const nearby = result.index.nearPoint(x, y, radius);
+                output({
+                    pid,
+                    point: { x, y },
+                    radius,
+                    count: nearby.length,
+                    elements: nearby.slice(0, 20).map(n => ({
+                        id: n.element.id,
+                        type: n.element.type,
+                        label: n.element.label,
+                        distance: Math.round(n.distance),
+                        direction: n.direction,
+                        bounds: n.element.bounds,
+                    })),
+                });
+                await connector.disconnectAll();
+                break;
+            }
             // ─── Browser Session & Cookie Commands ────────────────────
             case 'cookies': {
                 const pidStr = args[0];
@@ -537,6 +660,87 @@ async function main() {
                 });
                 break;
             }
+            // ─── Feature 1: Focus Tracking ─────────────────────────────
+            case 'focused': {
+                const pidStr = args[0];
+                if (!pidStr)
+                    error('Usage: focused <pid>  — Get the currently focused UI element (<50ms)');
+                const pid = parseInt(pidStr, 10);
+                const result = await connector.focused(pid);
+                output(result);
+                break;
+            }
+            // ─── Feature 2: Element Path Addressing ──────────────────────
+            case 'find-path': {
+                const pidStr = args[0];
+                if (!pidStr)
+                    error('Usage: find-path <pid> --path "Menu,File,Save" OR --name "Close" --parent "Dialog"');
+                const pid = parseInt(pidStr, 10);
+                const pathStr = flags.path;
+                const nameStr = flags.name;
+                const parentStr = flags.parent;
+                const typeStr = flags.type;
+                const occ = flags.occurrence || 'first';
+                const selector = {
+                    occurrence: occ === 'first' || occ === 'last' ? occ : parseInt(occ, 10),
+                };
+                if (pathStr)
+                    selector.path = pathStr.split(',').map((s) => s.trim());
+                if (nameStr)
+                    selector.name = nameStr;
+                if (parentStr)
+                    selector.parent = parentStr;
+                if (typeStr)
+                    selector.type = typeStr;
+                const elements = await connector.findByPath(pid, selector);
+                output({ pid, count: elements.length, elements });
+                break;
+            }
+            // ─── Feature 3: State-change Listener ────────────────────────
+            case 'watch': {
+                const pidStr = args[0];
+                if (!pidStr)
+                    error('Usage: watch <pid> [--duration 3000] [--poll 200]  — Watch for UI state changes');
+                const pid = parseInt(pidStr, 10);
+                const durationMs = parseInt(flags.duration || '3000', 10);
+                const pollMs = parseInt(flags.poll || '200', 10);
+                const events = await connector.watchChanges(pid, durationMs, pollMs);
+                output({ pid, eventCount: events.length, events });
+                break;
+            }
+            // ─── Feature 4: Atomic Action Chains ─────────────────────────
+            case 'atomic': {
+                const json = args[0] || flags.json;
+                if (!json)
+                    error('Usage: atomic \'{"pid":1234,"steps":[{"action":"hotkey","keys":["alt","m"]},{"action":"wait","ms":300},{"action":"keypress","key":"Down"}]}\'');
+                let def;
+                try {
+                    def = JSON.parse(json);
+                }
+                catch {
+                    error('Invalid JSON for atomic chain');
+                }
+                const result = await connector.atomicChain(def);
+                output(result);
+                break;
+            }
+            // ─── Feature 5: Smart Element Resolution ─────────────────────
+            case 'smart-invoke': {
+                const pidStr = args[0];
+                const name = args.slice(1).join(' ') || flags.name;
+                if (!pidStr || !name)
+                    error('Usage: smart-invoke <pid> <element name> [--parent "Dialog"] [--type Button] [--occurrence last]');
+                const pid = parseInt(pidStr, 10);
+                const result = await connector.smartInvoke(pid, name, {
+                    parent: flags.parent,
+                    type: flags.type,
+                    occurrence: flags.occurrence === 'first' || flags.occurrence === 'last'
+                        ? flags.occurrence
+                        : flags.occurrence ? parseInt(flags.occurrence, 10) : undefined,
+                });
+                output(result);
+                break;
+            }
             // ─── Server Mode ─────────────────────────────────────────
             case 'serve': {
                 const { UABServer } = await import('./server.js');
@@ -570,200 +774,6 @@ async function main() {
                 const envInfo = detectEnvironment();
                 const defaults = getDefaults(envInfo.mode);
                 output({ environment: envInfo, defaults });
-                break;
-            }
-            // ─── Install / Uninstall / Status ───────────────────────────
-            case 'install': {
-                const { installDaemon, isDaemonInstalled, isDaemonRunning, startDaemon } = await import('./cowork-bridge/daemon.js');
-                const { registerViaRegistry, extensionExists, generateIcons, isExtensionInstalled } = await import('./plugins/chrome-ext/installer.js');
-                const { findCoworkSkillsDir, registerPlugin, writeSkillToAllLocations } = await import('./cowork-bridge/skills-dir.js');
-                const { generateSkillContent } = await import('./cowork-bridge/skill-template.js');
-                const { detectHostGatewayIp, getOrCreateApiKey } = await import('./cowork-bridge/host-network.js');
-                const { existsSync: fileExists } = await import('fs');
-                const { resolve: resolvePath } = await import('path');
-                // Step 0: Detect host network and generate API key
-                const hostNet = detectHostGatewayIp();
-                const apiKey = getOrCreateApiKey();
-                console.log(`Host gateway IP: ${hostNet.hostIp} (${hostNet.method}: ${hostNet.adapterName})`);
-                // Step 1: Check system requirements
-                const nodeVer = process.versions.node;
-                const majorVer = parseInt(nodeVer.split('.')[0], 10);
-                if (majorVer < 18) {
-                    console.log('Checking system requirements... FAIL (Node.js >= 18 required)');
-                    process.exit(1);
-                }
-                console.log('Checking system requirements... ok');
-                // Step 2: Start UAB service (bound to 0.0.0.0 with API key)
-                const installed = await isDaemonInstalled();
-                if (!installed) {
-                    const result = await installDaemon(apiKey);
-                    if (!result.success) {
-                        console.log(`Starting UAB service... FAIL (${result.message})`);
-                    }
-                    else {
-                        console.log('Starting UAB service... installed (0.0.0.0:3100, authenticated)');
-                    }
-                }
-                const running = await isDaemonRunning();
-                if (!running) {
-                    await startDaemon();
-                    let healthy = false;
-                    for (let i = 0; i < 10; i++) {
-                        await new Promise(r => setTimeout(r, 500));
-                        if (await isDaemonRunning()) {
-                            healthy = true;
-                            break;
-                        }
-                    }
-                    if (healthy) {
-                        console.log('Starting UAB service... ok');
-                    }
-                    else {
-                        console.log('Starting UAB service... started (health check pending)');
-                    }
-                }
-                else {
-                    console.log('Starting UAB service... already running');
-                }
-                // Step 3: Install Chrome extension
-                if (extensionExists()) {
-                    generateIcons();
-                    const crxPath = resolvePath('data/uab-bridge.crx');
-                    if (!fileExists(crxPath)) {
-                        try {
-                            const { execSync: exec } = await import('child_process');
-                            exec('node scripts/pack-extension.js', { stdio: 'pipe', cwd: resolvePath('.') });
-                        }
-                        catch {
-                            console.log('Installing Chrome extension... WARN (could not pack .crx)');
-                        }
-                    }
-                    if (isExtensionInstalled()) {
-                        console.log('Installing Chrome extension... already registered');
-                    }
-                    else {
-                        const regResult = registerViaRegistry();
-                        if (regResult.success) {
-                            console.log(`Installing Chrome extension... registered (${regResult.browsers.join(', ')})`);
-                        }
-                        else {
-                            console.log('Installing Chrome extension... manual install required');
-                        }
-                    }
-                }
-                else {
-                    console.log('Installing Chrome extension... WARN (extension files not found)');
-                }
-                // Step 4: Detect plugin directories (CLI + Co-work)
-                const skillsResult = await findCoworkSkillsDir();
-                console.log(`Detecting plugin directories... CLI: ${skillsResult.pluginRoot}`);
-                if (skillsResult.coworkPaths.length > 0) {
-                    console.log(`  Co-work sessions: ${skillsResult.coworkPaths.length} found`);
-                }
-                // Step 5: Write SKILL.md to ALL locations (CLI + Co-work)
-                const skillContent = generateSkillContent({ hostIp: hostNet.hostIp, apiKey });
-                const writeResult = writeSkillToAllLocations(skillsResult.skillFilePath, skillsResult.coworkPaths, skillContent);
-                const written = writeResult.cli;
-                console.log(`Writing skill file... CLI: ${writeResult.cli ? 'ok' : 'FAIL'}, Co-work: ${writeResult.cowork} session(s)`);
-                // Register plugin in Claude Code settings
-                const regResult = await registerPlugin();
-                if (regResult.success) {
-                    console.log('Registering plugin... enabled in Claude Code');
-                }
-                else {
-                    console.log(`Registering plugin... WARN (${regResult.message})`);
-                }
-                // Step 6: Verify
-                const finalRunning = await isDaemonRunning();
-                if (finalRunning && written) {
-                    console.log('Verifying... ok');
-                    console.log('');
-                    console.log('UAB Bridge installed. Open Claude Code and ask Claude to control an app.');
-                }
-                else {
-                    console.log('Verifying... partial (some checks did not pass)');
-                }
-                break;
-            }
-            case 'uninstall': {
-                const { uninstallDaemon, stopDaemon: stopD } = await import('./cowork-bridge/daemon.js');
-                const { findCoworkSkillsDir: findSkills, unregisterPlugin } = await import('./cowork-bridge/skills-dir.js');
-                const { existsSync: fExists, unlinkSync: unlink, rmSync } = await import('fs');
-                const { join: joinP } = await import('path');
-                // Stop and uninstall daemon
-                await stopD();
-                const uninstResult = await uninstallDaemon();
-                console.log(`Removing UAB service... ${uninstResult.success ? 'ok' : uninstResult.message}`);
-                // Remove skill files from ALL locations (CLI + Co-work)
-                try {
-                    const skillsDir = await findSkills();
-                    // CLI plugin
-                    if (fExists(skillsDir.skillFilePath)) {
-                        unlink(skillsDir.skillFilePath);
-                        console.log(`Removing CLI skill... removed`);
-                    }
-                    try {
-                        rmSync(skillsDir.pluginRoot, { recursive: true, force: true });
-                    }
-                    catch { /* */ }
-                    // Co-work sessions
-                    let coworkRemoved = 0;
-                    for (const coworkDir of skillsDir.coworkPaths) {
-                        try {
-                            const skillFile = joinP(coworkDir, 'SKILL.md');
-                            if (fExists(skillFile)) {
-                                unlink(skillFile);
-                                coworkRemoved++;
-                            }
-                            // Remove the plugin directory
-                            const pluginRoot = joinP(coworkDir, '..', '..');
-                            rmSync(pluginRoot, { recursive: true, force: true });
-                        }
-                        catch { /* best effort */ }
-                    }
-                    console.log(`Removing Co-work skills... ${coworkRemoved} session(s) cleaned`);
-                }
-                catch {
-                    console.log('Removing skill files... skipped');
-                }
-                // Unregister from Claude Code settings
-                const unregResult = await unregisterPlugin();
-                console.log(`Unregistering plugin... ${unregResult.success ? 'ok' : unregResult.message}`);
-                console.log('');
-                console.log('UAB Bridge uninstalled.');
-                break;
-            }
-            case 'status': {
-                const { isDaemonInstalled: isInst, isDaemonRunning: isRun } = await import('./cowork-bridge/daemon.js');
-                const { isExtensionInstalled: isExtInst, extensionExists: extEx } = await import('./plugins/chrome-ext/installer.js');
-                const { findCoworkSkillsDir: findSD } = await import('./cowork-bridge/skills-dir.js');
-                const { existsSync: fEx } = await import('fs');
-                const daemonInstalled = await isInst();
-                const daemonRunning = await isRun();
-                const extInstalled = isExtInst();
-                const extFilesExist = extEx();
-                const skillsDir = await findSD();
-                const skillFileExists = fEx(skillsDir.skillFilePath);
-                output({
-                    daemon: {
-                        installed: daemonInstalled,
-                        running: daemonRunning,
-                    },
-                    extension: {
-                        filesExist: extFilesExist,
-                        registered: extInstalled,
-                    },
-                    plugin: {
-                        pluginRoot: skillsDir.pluginRoot,
-                        skillFile: skillsDir.skillFilePath,
-                        skillFileExists,
-                        method: skillsDir.method,
-                    },
-                    server: {
-                        healthy: daemonRunning,
-                        url: 'http://127.0.0.1:3100',
-                    },
-                });
                 break;
             }
             case 'help':
@@ -820,14 +830,22 @@ async function main() {
                         composeEmail: 'Create draft email (COM): act <pid> _ composeEmail --to addr --subject subj --body text',
                         sendEmail: 'Send email (COM): act <pid> _ sendEmail --to addr --subject subj --body text',
                     },
+                    spatialCommands: {
+                        map: 'Generate spatial map: map <pid> [--format detailed|compact|json] [--depth N] [--no-text]',
+                        composite: 'Full composite query (map + text + optional vision): composite <pid> [--depth N] [--no-text] [--vision]',
+                        'find-element': 'Find element by description: find-element <pid> <description>',
+                        near: 'Find elements near a point: near <pid> <x> <y> [--radius N]',
+                    },
+                    advancedCommands: {
+                        focused: 'Get focused element (<50ms): focused <pid>',
+                        'find-path': 'Find by tree path: find-path <pid> --path "File,Save" OR --name "Close" --parent "Dialog"',
+                        watch: 'Watch for state changes: watch <pid> [--duration 3000] [--poll 200]',
+                        atomic: 'Atomic action chain (single PS session): atomic \'{"pid":N,"steps":[...]}\'',
+                        'smart-invoke': 'Smart invoke (auto-fallback): smart-invoke <pid> <name> [--parent "..."] [--type Button]',
+                    },
                     serverCommands: {
                         serve: 'Start HTTP server: serve [--port 3100] [--host 127.0.0.1] [--api-key secret]',
                         env: 'Show detected environment and defaults (desktop/server/container)',
-                    },
-                    installCommands: {
-                        install: 'Full install: daemon + extension + skill file (all-in-one)',
-                        uninstall: 'Remove daemon, skill file, and clean up',
-                        status: 'Report daemon, extension, skill file, and server health',
                     },
                     globalFlags: {
                         '--profile-dir': 'Custom profile directory (default: data/uab-profiles)',
@@ -840,7 +858,14 @@ async function main() {
         error(err instanceof Error ? err.message : String(err));
     }
     finally {
-        await connector.stop();
+        // Force exit after brief cleanup — prevents hanging on connection teardown
+        const exitTimer = setTimeout(() => process.exit(0), 2000);
+        exitTimer.unref();
+        try {
+            await connector.stop();
+        }
+        catch { /* ignore cleanup errors */ }
+        process.exit(0);
     }
 }
 main();

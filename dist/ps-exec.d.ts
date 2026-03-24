@@ -34,3 +34,4 @@ export declare function runPSJsonInteractive(script: string, timeoutMs?: number)
  * Falls back to direct execution when already in an interactive session.
  */
 export declare function runPSRawInteractive(script: string, timeoutMs?: number): string;
+//# sourceMappingURL=ps-exec.d.ts.map

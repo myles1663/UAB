@@ -146,7 +146,7 @@ export class UABServer {
     if (req.method === 'GET' && path === '/health') {
       this.sendJSON(res, 200, {
         status: 'ok',
-        version: '0.9.0',
+        version: '1.0.0',
         environment: this.environment,
         connector: this.connector.running,
         uptime: Math.floor(process.uptime()),
@@ -484,16 +484,16 @@ $allElements = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, 
 $results = @()
 foreach ($el in $allElements) {
   $rawName = $el.Current.Name
-  $name = if ($rawName) { $rawName -replace '[^\x20-\x7E]', '' } else { '' }
-  $controlType = $el.Current.ControlType.ProgrammaticName -replace 'ControlType\\.', ''
+  $name = if ($rawName) { $rawName -replace '[^\\x20-\\x7E]', '' } else { '' }
+  $controlType = $el.Current.ControlType.ProgrammaticName -replace 'ControlType\\\\.', ''
   $rawId = $el.Current.AutomationId
-  $automationId = if ($rawId) { $rawId -replace '[^\x20-\x7E]', '' } else { '' }
+  $automationId = if ($rawId) { $rawId -replace '[^\\x20-\\x7E]', '' } else { '' }
   $rect = $el.Current.BoundingRectangle
 
   $patterns = @()
   try {
     foreach ($p in $el.GetSupportedPatterns()) {
-      $pName = $p.ProgrammaticName -replace 'Identifiers\\.Pattern', '' -replace 'PatternIdentifiers\\.Pattern', ''
+      $pName = $p.ProgrammaticName -replace 'Identifiers\\\\.Pattern', '' -replace 'PatternIdentifiers\\\\.Pattern', ''
       $patterns += $pName
     }
   } catch {}
@@ -597,14 +597,12 @@ if (-not $target) {
 # Try to invoke or set focus
 try {
   $invoked = $false
-  # Try InvokePattern first (buttons, links)
   try {
     $invokePattern = $target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
     $invokePattern.Invoke()
     $invoked = $true
   } catch {}
 
-  # If InvokePattern failed, try SetFocus (works for text inputs, documents)
   if (-not $invoked) {
     try {
       $target.SetFocus()
@@ -612,7 +610,6 @@ try {
     } catch {}
   }
 
-  # If InvokePattern and SetFocus failed, try ValuePattern with SetValue
   if (-not $invoked) {
     try {
       $valuePattern = $target.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
@@ -625,7 +622,6 @@ try {
     } catch {}
   }
 
-  # Try ExpandCollapsePattern (dropdowns, attach buttons)
   if (-not $invoked) {
     try {
       $expandPattern = $target.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
@@ -638,25 +634,24 @@ try {
 
   Start-Sleep -Milliseconds 500
 
-  # Read clipboard in case the invoked action copies something
   $clipRaw = [System.Windows.Forms.Clipboard]::GetText()
 
   $rect = $target.Current.BoundingRectangle
   $result = @{
     success = $true
-    name = ($target.Current.Name -replace '[^\x20-\x7E]', '')
+    name = ($target.Current.Name -replace '[^\\x20-\\x7E]', '')
     type = $target.Current.ControlType.ProgrammaticName
     totalMatches = $matches.Count
     x = if ($rect.X -gt -99999 -and $rect.X -lt 99999) { [int]$rect.X } else { 0 }
     y = if ($rect.Y -gt -99999 -and $rect.Y -lt 99999) { [int]$rect.Y } else { 0 }
     clipboardLength = $clipRaw.Length
-    clipboardText = if ($clipRaw.Length -gt 0) { $clipRaw -replace '[^\x20-\x7E\r\n]', '' } else { '' }
+    clipboardText = if ($clipRaw.Length -gt 0) { $clipRaw -replace '[^\\x20-\\x7E\\r\\n]', '' } else { '' }
   }
   $result | ConvertTo-Json -Compress -Depth 2
 } catch {
   @{
     success = $false
-    error = ($_.Exception.Message -replace '[^\x20-\x7E]', '')
+    error = ($_.Exception.Message -replace '[^\\x20-\\x7E]', '')
     totalMatches = if ($matches) { $matches.Count } else { 0 }
   } | ConvertTo-Json -Compress
 }
@@ -752,23 +747,23 @@ try {
         const found = await conn.find(name);
         if (found.length === 0) throw new Error(`No app found: ${name}`);
         const withWindow = found.filter(p => p.windowTitle && p.windowTitle.length > 0);
-        targetPid = (withWindow.length > 0 ? withWindow[0] : found[0]).pid;
+        targetPid = (withWindow.length > 0 ? withWindow[0] : found[0]).pid!;
       }
 
       if (!conn.isConnected(targetPid)) await conn.connect(targetPid);
       const screenshotResult = await conn.screenshot(targetPid);
-      if (!screenshotResult.data && !screenshotResult.base64) {
+      if (!(screenshotResult as any).data && !(screenshotResult as any).base64) {
         throw new Error('Screenshot failed');
       }
 
-      const imageData = screenshotResult.data || screenshotResult.base64;
+      const imageData = (screenshotResult as any).data || (screenshotResult as any).base64;
 
       // Use Anthropic Vision API if available
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         return {
           pid: targetPid,
-          screenshot: screenshotResult.path,
+          screenshot: (screenshotResult as any).path,
           description: 'Set ANTHROPIC_API_KEY environment variable to enable Vision AI descriptions.',
         };
       }
@@ -798,7 +793,7 @@ try {
         .map((b: any) => b.text)
         .join('\n');
 
-      return { pid: targetPid, screenshot: screenshotResult.path, description };
+      return { pid: targetPid, screenshot: (screenshotResult as any).path, description };
     });
 
     // Launch / Focus
@@ -832,7 +827,7 @@ try {
         const found = await conn.find(name);
         if (found.length === 0) throw new Error(`No app found: ${name}`);
         const withWindow = found.filter(p => p.windowTitle && p.windowTitle.length > 0);
-        targetPid = (withWindow.length > 0 ? withWindow[0] : found[0]).pid;
+        targetPid = (withWindow.length > 0 ? withWindow[0] : found[0]).pid!;
       }
 
       // Use Vision input's ForceForeground
@@ -863,6 +858,63 @@ try {
     // Environment
     this.routes.set('/environment', async () => {
       return this.environment;
+    });
+
+    // ─── Feature 1: Real-time Focus Tracking ─────────────────────
+    this.routes.set('/focused', async (body, conn) => {
+      const pid = body.pid as number;
+      if (!pid) throw new Error('Missing required field: pid');
+      const result = await conn.focused(pid);
+      return result;
+    });
+
+    // ─── Feature 2: Element Addressing by Path ───────────────────
+    this.routes.set('/find-by-path', async (body, conn) => {
+      const pid = body.pid as number;
+      if (!pid) throw new Error('Missing required field: pid');
+      const selector = {
+        path: body.path as string[] | undefined,
+        name: body.name as string | undefined,
+        parent: body.parent as string | undefined,
+        type: body.type as any,
+        occurrence: body.occurrence as any,
+      };
+      const elements = await conn.findByPath(pid, selector);
+      return { pid, count: elements.length, elements };
+    });
+
+    // ─── Feature 3: State-change Listener ────────────────────────
+    this.routes.set('/watch', async (body, conn) => {
+      const pid = body.pid as number;
+      if (!pid) throw new Error('Missing required field: pid');
+      const durationMs = (body.durationMs as number) || 3000;
+      const pollMs = (body.pollMs as number) || 200;
+      const events = await conn.watchChanges(pid, durationMs, pollMs);
+      return { pid, eventCount: events.length, events };
+    });
+
+    // ─── Feature 4: Atomic Action Chains ─────────────────────────
+    this.routes.set('/atomic', async (body, conn) => {
+      const pid = body.pid as number;
+      if (!pid) throw new Error('Missing required field: pid');
+      const steps = body.steps as any[];
+      if (!steps || !Array.isArray(steps)) throw new Error('Missing required field: steps (array)');
+      const label = (body.label as string) || 'atomic-chain';
+      const result = await conn.atomicChain({ pid, steps, label });
+      return { pid, label, ...result };
+    });
+
+    // ─── Feature 5: Smart Element Resolution ─────────────────────
+    this.routes.set('/smart-invoke', async (body, conn) => {
+      const pid = body.pid as number;
+      const name = body.name as string;
+      if (!pid || !name) throw new Error('Missing required fields: pid, name');
+      const result = await conn.smartInvoke(pid, name, {
+        parent: body.parent as string,
+        type: body.type as string,
+        occurrence: body.occurrence as any,
+      });
+      return { pid, name, ...result };
     });
   }
 }

@@ -6,7 +6,9 @@
  *   - Codex CLI (via Bash → CLI)
  *   - Custom agents (import as library)
  *   - MD-only agents (via CLI JSON output)
- *   - ClaudeClaw Telegram bot (via service mode)
+ *   - Kai Telegram bot (via service mode)
+ *
+ * NOTE: Synced from UAB standalone repo. ClaudeClaw references renamed to Kai.
  *
  * Design principles:
  *   - ZERO dependencies on any agent framework (no Grammy, no SQLite)
@@ -41,7 +43,10 @@
  */
 import { AppRegistry } from './registry.js';
 import type { AppProfile } from './registry.js';
-import type { UIElement, ElementSelector, ActionType, ActionParams, ActionResult, AppState } from './types.js';
+import type { UIElement, ElementSelector, ActionType, ActionParams, ActionResult, AppState, FocusedElementInfo, PathSelector, AtomicChainDef, AtomicChainResult, SmartResolveResult, StateChangeEvent } from './types.js';
+import { CompositeEngine } from './composite.js';
+import type { CompositeResult, CompositeOptions } from './composite.js';
+import type { SpatialElement } from './spatial.js';
 export interface ConnectorOptions {
     /** Directory for JSON profile persistence. Default: "data/uab-profiles" */
     profileDir?: string;
@@ -153,6 +158,94 @@ export declare class UABConnector {
     private ensureStarted;
     private ensureConnected;
     private extractExe;
+    /** Get the composite engine for advanced spatial queries. */
+    get composite(): CompositeEngine;
+    private _composite;
+    /**
+     * Build a spatial map of the app — bounding rects organized into rows/columns.
+     * This is FASTER than screenshots and gives AI structured positional data.
+     */
+    spatialMap(pid: number, options?: CompositeOptions): Promise<CompositeResult>;
+    /**
+     * Get a text-based map of the app layout for AI consumption.
+     * Replaces screenshots in most use cases.
+     */
+    textMap(pid: number, format?: 'detailed' | 'compact' | 'json'): Promise<string>;
+    /**
+     * Find elements by natural language description using spatial map + text reading.
+     * Faster than vision-based element finding.
+     */
+    findByDescription(pid: number, description: string): Promise<SpatialElement[]>;
+    /**
+     * Get the currently focused element in a window — <50ms via UIA FocusedElement.
+     * No connection required; works with any visible window.
+     */
+    focused(pid: number): Promise<FocusedElementInfo>;
+    /**
+     * Find elements by tree path or parent context.
+     * Solves the "5 elements named Close" problem.
+     *
+     * @example
+     * // By tree path: Menu Bar → File → Save As...
+     * await connector.findByPath(pid, { path: ["File", "Save As..."] })
+     *
+     * // By parent context: "Close" inside "Settings dialog"
+     * await connector.findByPath(pid, { name: "Close", parent: "Settings" })
+     */
+    findByPath(pid: number, selector: PathSelector): Promise<Array<{
+        name: string;
+        type: string;
+        automationId: string;
+        bounds: {
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+        };
+        patterns: string;
+    }>>;
+    /**
+     * Watch for UIA state changes on a window. Polls efficiently at configurable interval.
+     * Returns a snapshot of changes since last check.
+     *
+     * For real-time push notifications, use the HTTP server's SSE endpoint.
+     */
+    watchChanges(pid: number, durationMs?: number, pollMs?: number): Promise<StateChangeEvent[]>;
+    /**
+     * Execute a sequence of actions in a SINGLE PowerShell session.
+     * No focus-stealing between steps. All actions fire atomically.
+     *
+     * @example
+     * await connector.atomicChain({
+     *   pid: 38184,
+     *   steps: [
+     *     { action: 'hotkey', keys: ['alt', 'm'] },
+     *     { action: 'wait', ms: 300 },
+     *     { action: 'keypress', key: 'Down' },
+     *     { action: 'keypress', key: 'Enter' },
+     *   ]
+     * });
+     */
+    atomicChain(chain: AtomicChainDef): Promise<AtomicChainResult>;
+    /** Map key names to PowerShell SendKeys format */
+    private psKeyMap;
+    /**
+     * Find an element by name and invoke it using the BEST available method.
+     * Tries in order:
+     *   1. InvokePattern (standard UIA invoke)
+     *   2. SetFocus → Enter key
+     *   3. Find nearest invokable parent/sibling
+     *   4. Calculate bounding rect center → click at coordinates
+     *   5. ExpandCollapsePattern
+     *   6. TogglePattern
+     *
+     * This is the "it just works" method — if the element is visible, we WILL activate it.
+     */
+    smartInvoke(pid: number, name: string, options?: {
+        parent?: string;
+        type?: string;
+        occurrence?: 'first' | 'last' | number;
+    }): Promise<SmartResolveResult>;
     /** Count elements recursively. */
     countElements(elements: UIElement[]): number;
     /** Flatten UI tree for display. */
