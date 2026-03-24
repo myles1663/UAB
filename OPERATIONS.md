@@ -255,6 +255,22 @@ curl -s -X POST http://localhost:3100/flow -H "X-API-Key: YOUR_KEY" -H "Content-
 
 Flow files are stored in `data/flow-library/`. To add flows for a new app, create a JSON file there or use the POST endpoint.
 
+## MCP Server
+
+Add to Claude Desktop config (`%APPDATA%/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "desktop-control": {
+      "command": "node",
+      "args": ["C:\\path\\to\\UAB-repo\\dist\\mcp-server.js"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The desktop control tools will appear automatically.
+
 ## Maintenance
 
 ### Update UAB

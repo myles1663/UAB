@@ -66,6 +66,9 @@ Future development plans for Universal App Bridge.
 - ✅ Confirmed Electron PID fix for: ChatGPT, VS Code, Slack, Discord, Teams, Notion, Obsidian
 - ✅ Flow Library with recursive application bridge pattern — per-app interaction sequences with framework defaults
 
+### Phase 6 — Anti-Screenshot SDK (v1.2.0)
+- ✅ Spatial maps, composite engine, MCP server, atomic chains, smart invoke, focus tracking
+
 ---
 
 ## Near-Term

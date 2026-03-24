@@ -1,6 +1,6 @@
 {
   "name": "universal-app-bridge",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Smart function discovery and framework-level desktop app control for AI agents. Desktop + server dual-mode with Vision AI fallback. Hook into Chrome, Electron, Qt, GTK, WPF, Flutter, Java, and Office apps with a unified API.",
   "type": "module",
   "main": "dist/index.js",

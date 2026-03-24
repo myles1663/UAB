@@ -523,6 +523,20 @@ curl -X POST localhost:3100/invoke -H "X-API-Key: KEY" -d '{"pid":28968, "name":
 # → Invokes the last Copy button, returns clipboard text
 ```
 
+### Anti-Screenshot SDK (v1.2)
+
+UAB v1.2 eliminates the need for screenshots in most desktop automation tasks.
+
+**Spatial Maps** organize UI elements into rows and columns — the agent sees the app layout as structured data instead of pixels. One call replaces a screenshot + vision API analysis.
+
+**Composite Engine** combines UIA tree + bounding rects + text reading in speed-priority order. Vision becomes a last resort, not the primary method.
+
+**MCP Server** exposes 15 native tools (`desktop_scan`, `desktop_smart_click`, `desktop_spatial_map`, etc.) that AI agents discover automatically. No skill files, no curl commands — the tools just appear.
+
+**Atomic Chains** execute multi-step action sequences in a single PowerShell session — no focus stealing between steps. Solves the menu timing problem.
+
+**Smart Invoke** tries 6 methods to click any element: InvokePattern → SetFocus → ValuePattern → ExpandCollapse → coordinate click → parent invoke.
+
 ## Session 0 Bridge
 
 UAB works even when running in Session 0 (SSH, Windows Services). It automatically detects Session 0 and routes PowerShell through the Task Scheduler with `/IT` flag to bridge to the interactive desktop session.

@@ -1096,6 +1096,23 @@ This is "programmatic visual equivalence through accessibility tree introspectio
 
 ---
 
+## Anti-Screenshot SDK Architecture
+
+The Anti-Screenshot SDK inverts the traditional computer-use approach. Instead of screenshot → vision → coordinates → click, it uses:
+
+1. **UIA Tree** (instant) — element IDs, types, states, structure
+2. **Bounding Rects** (instant) — spatial positions, sizes → spatial map
+3. **Text Reading** (fast) — TextPattern/ValuePattern content extraction
+4. **Vision** (slow) — screenshot + Claude Vision (ONLY when needed)
+
+The spatial map organizes elements into rows and columns using Y-coordinate clustering, enabling agents to understand UI layout from structured data without processing images.
+
+The MCP server exposes 15 tools over stdio, making UAB a native tool for any MCP-compatible agent including Claude Desktop.
+
+Atomic chains solve the menu timing problem by executing all steps (click menu → arrow down → Enter) in a single PowerShell session, preventing focus loss between steps.
+
+---
+
 ## Key Design Decisions
 
 See [docs/design-decisions.md](docs/design-decisions.md) for the full rationale behind:

@@ -2,6 +2,27 @@
 
 All notable changes to Universal App Bridge will be documented in this file.
 
+## v1.2.0 — Anti-Screenshot SDK
+
+### Added
+- **Spatial Map Engine** (`spatial.ts`) — Converts flat UIA elements into rows/columns grid with spatial index for fast positional queries
+- **Composite Query Engine** (`composite.ts`) — Combines UIA tree + bounding rects + text reading + optional vision in speed-priority order
+- **MCP Server** (`mcp-server.ts`) — 15-tool MCP server over stdio for native tool integration with Claude Desktop and any MCP-compatible agent
+- **Agent SDK** (`sdk.ts`) — Simple wrapper: `desktop.click('Notepad', 'File')`, `desktop.look('Notepad')`
+- **Agent Prompt Templates** (`agent-prompt.ts`) — System prompts teaching agents to prefer structured data over screenshots
+- **`/focused` endpoint** — Real-time focus tracking via UIA FocusedElement (<50ms), includes tree path
+- **`/find-by-path` endpoint** — Address elements by tree path or parent context (solves "5 elements named Close" problem)
+- **`/watch` endpoint** — State change detection by polling focus and element tree
+- **`/atomic` endpoint** — Execute multi-step action chains in single PowerShell session (no focus loss)
+- **`/smart-invoke` endpoint** — 6-method fallback cascade for clicking any element
+- **`/spatial-map` endpoint** — Spatial layout organized by rows/columns
+- **Connector methods**: `spatialMap()`, `textMap()`, `findByDescription()`, `focused()`, `findByPath()`, `watchChanges()`, `atomicChain()`, `smartInvoke()`
+
+### Changed
+- `/invoke` now tries InvokePattern → SetFocus → ValuePattern → ExpandCollapsePattern cascade
+- Improved PowerShell JSON sanitization for emojis and special characters
+- MCP server auto-sets working directory to UAB repo root
+
 ## v1.1.0 — X-ray Vision
 
 ### Added

@@ -1072,6 +1072,94 @@ Flow files are stored in `data/flow-library/`. Framework defaults are in `data/f
 
 ---
 
+## Anti-Screenshot SDK
+
+### POST /focused
+
+Get the currently focused element with its tree path.
+
+**Request:**
+```json
+{ "pid": 1234 }
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "focused": {
+    "name": "Message input",
+    "type": "Edit",
+    "path": "Window > Pane > Group > Edit",
+    "bounds": { "x": 100, "y": 500, "w": 600, "h": 40 }
+  }
+}
+```
+
+### POST /find-by-path
+
+Find elements by tree path or parent context. Solves the "5 elements named Close" problem.
+
+**Request:**
+```json
+{ "pid": 1234, "path": "Window > Menu > MenuItem[File]" }
+```
+
+### POST /watch
+
+Watch for state changes (focus, element tree).
+
+**Request:**
+```json
+{ "pid": 1234, "duration": 5000 }
+```
+
+### POST /atomic
+
+Execute a multi-step action chain atomically in a single PowerShell session (no focus loss between steps).
+
+**Request:**
+```json
+{
+  "pid": 1234,
+  "steps": [
+    { "action": "invoke", "name": "File" },
+    { "action": "invoke", "name": "Save As..." }
+  ]
+}
+```
+
+### POST /smart-invoke
+
+6-method element activation cascade: InvokePattern, SetFocus, ValuePattern, ExpandCollapsePattern, coordinate click, parent invoke.
+
+**Request:**
+```json
+{ "pid": 1234, "name": "Submit", "occurrence": "first" }
+```
+
+### POST /spatial-map
+
+Get spatial layout of the application organized by rows and columns.
+
+**Request:**
+```json
+{ "pid": 1234 }
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "rows": [
+    { "y": 0, "elements": ["File", "Edit", "View", "Help"] },
+    { "y": 30, "elements": ["toolbar_btn_1", "toolbar_btn_2"] }
+  ]
+}
+```
+
+---
+
 ## Deep Query & Invoke
 
 ### POST /deep-query

@@ -23,6 +23,14 @@
 import { UABConnector } from './connector.js';
 import type { ElementSelector } from './types.js';
 import * as readline from 'readline';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+
+// Ensure working directory is the UAB repo root (not system32)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const uabRoot = resolve(__dirname, '..');
+try { process.chdir(uabRoot); } catch { /* best effort */ }
 
 // ─── MCP Protocol Types ─────────────────────────────────────────
 
