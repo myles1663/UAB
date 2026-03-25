@@ -125,7 +125,7 @@ async function rawWalk(pid) {
 const TOOLS = [
     {
         name: 'desktop_scan',
-        description: 'Scan for all running desktop applications. Returns app names, PIDs, and detected frameworks. Use this first to discover what apps are available. After connecting to an app, call desktop_flow to check if there is a learned interaction flow — many Electron apps (Grok, ChatGPT, Slack) have hidden inputs that require specific navigation steps.',
+        description: 'Scan for all running desktop applications. Returns app names, PIDs, and detected frameworks. IMPORTANT: Call this FIRST and store the result as your baseline — you need to know what was already running so you never close the user\'s apps. After connecting, call desktop_flow for interaction flows AND desktop_flow("hygiene-protocol") for system hygiene rules (window discipline, clipboard respect, cleanup). Tag every app you open as present_to_user (leave open) or tool_use_only (close when done).',
         inputSchema: {
             type: 'object',
             properties: {},
