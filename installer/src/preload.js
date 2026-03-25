@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('uabInstaller', {
   installExtension: () => ipcRenderer.invoke('install-extension'),
   detectSkillsDir: () => ipcRenderer.invoke('detect-skills-dir'),
   writeSkillFile: (locations) => ipcRenderer.invoke('write-skill-file', locations),
+  configureMcp: () => ipcRenderer.invoke('configure-mcp'),
   verifyInstall: (skillFilePath) => ipcRenderer.invoke('verify-install', skillFilePath),
 });

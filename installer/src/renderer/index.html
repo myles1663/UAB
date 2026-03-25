@@ -137,6 +137,7 @@
       <li id="step-extension"><span class="step-icon" id="icon-extension">○</span><div><div>Installing Chrome extension bridge</div><div class="step-detail" id="detail-extension"></div></div></li>
       <li id="step-skills"><span class="step-icon" id="icon-skills">○</span><div><div>Detecting Co-work skills directory</div><div class="step-detail" id="detail-skills"></div></div></li>
       <li id="step-write"><span class="step-icon" id="icon-write">○</span><div><div>Writing skill file</div><div class="step-detail" id="detail-write"></div></div></li>
+      <li id="step-mcp"><span class="step-icon" id="icon-mcp">○</span><div><div>Configuring MCP for Claude Desktop & Code</div><div class="step-detail" id="detail-mcp"></div></div></li>
       <li id="step-verify"><span class="step-icon" id="icon-verify">○</span><div><div>Verifying installation</div><div class="step-detail" id="detail-verify"></div></div></li>
     </ul>
   </div>
@@ -292,7 +293,25 @@
         setStep('write', 'error', 'No plugin directories detected');
       }
 
-      // Step 6: Verify
+      // Step 6: Configure MCP
+      setStep('mcp', 'active');
+      try {
+        const mcp = await api.configureMcp();
+        const parts = [];
+        if (mcp.claudeDesktop) parts.push('Claude Desktop');
+        if (mcp.claudeCode) parts.push('Claude Code');
+        if (parts.length > 0) {
+          setStep('mcp', 'done', parts.join(' + '));
+        } else {
+          setStep('mcp', 'warn', mcp.errors.join('; ') || 'No configs written');
+        }
+        log(`MCP: desktop=${mcp.claudeDesktop}, code=${mcp.claudeCode}`);
+      } catch (err) {
+        setStep('mcp', 'warn', err.message);
+        log(`MCP error: ${err.message}`);
+      }
+
+      // Step 7: Verify
       setStep('verify', 'active');
       try {
         const verify = await api.verifyInstall(skillFilePath);

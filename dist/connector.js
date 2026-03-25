@@ -884,12 +884,15 @@ $sig2 = @'
 [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 [DllImport("user32.dll")] public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
 '@
 Add-Type -MemberDefinition $sig2 -Name 'WinAPI' -Namespace 'Win32Focus' -ErrorAction SilentlyContinue
 
 $proc = Get-Process -Id ${chain.pid} -ErrorAction SilentlyContinue
 if ($proc -and $proc.MainWindowHandle) {
-  [Win32Focus.WinAPI]::ShowWindow($proc.MainWindowHandle, 9) | Out-Null
+  if ([Win32Focus.WinAPI]::IsIconic($proc.MainWindowHandle)) {
+    [Win32Focus.WinAPI]::ShowWindow($proc.MainWindowHandle, 9) | Out-Null
+  }
   [Win32Focus.WinAPI]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
   Start-Sleep -Milliseconds 100
 }

@@ -527,7 +527,65 @@ ipcMain.handle('write-skill-file', async (event, locations) => {
 });
 
 /**
- * Step 6: Verify installation
+ * Step 6: Configure MCP for Claude Desktop & Claude Code
+ */
+ipcMain.handle('configure-mcp', async () => {
+  const result = { claudeDesktop: false, claudeCode: false, errors: [] };
+  const mcpServerPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'uab-dist', 'mcp-server.js')
+    : path.join(getUABRoot(), 'dist', 'mcp-server.js');
+  const nodePath = getNodePath();
+
+  // ── Claude Desktop config ──
+  try {
+    const claudeDir = os.platform() === 'darwin'
+      ? path.join(os.homedir(), 'Library', 'Application Support', 'Claude')
+      : path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Claude');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    const configPath = path.join(claudeDir, 'claude_desktop_config.json');
+
+    let config = {};
+    if (fs.existsSync(configPath)) {
+      try { config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch {}
+    }
+    if (!config.mcpServers) config.mcpServers = {};
+    config.mcpServers['desktop-control'] = {
+      command: nodePath,
+      args: [mcpServerPath],
+    };
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    result.claudeDesktop = true;
+  } catch (err) {
+    result.errors.push('Claude Desktop: ' + (err.message || String(err)));
+  }
+
+  // ── Claude Code settings — add MCP permission ──
+  try {
+    const claudeCodeDir = path.join(os.homedir(), '.claude');
+    fs.mkdirSync(claudeCodeDir, { recursive: true });
+    const settingsPath = path.join(claudeCodeDir, 'settings.json');
+
+    let settings = {};
+    if (fs.existsSync(settingsPath)) {
+      try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')); } catch {}
+    }
+    if (!settings.permissions) settings.permissions = {};
+    if (!Array.isArray(settings.permissions.allow)) settings.permissions.allow = [];
+    const perm = 'mcp__desktop-control__*';
+    if (!settings.permissions.allow.includes(perm)) {
+      settings.permissions.allow.push(perm);
+    }
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+    result.claudeCode = true;
+  } catch (err) {
+    result.errors.push('Claude Code: ' + (err.message || String(err)));
+  }
+
+  return result;
+});
+
+/**
+ * Step 7: Verify installation
  */
 ipcMain.handle('verify-install', async (event, skillFilePath) => {
   return {

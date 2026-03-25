@@ -537,6 +537,93 @@ UAB v1.2 eliminates the need for screenshots in most desktop automation tasks.
 
 **Smart Invoke** tries 6 methods to click any element: InvokePattern → SetFocus → ValuePattern → ExpandCollapse → coordinate click → parent invoke.
 
+## MCP Setup
+
+UAB exposes 17 native desktop control tools via the [Model Context Protocol](https://modelcontextprotocol.io). Any MCP-compatible agent gets instant access to `desktop_scan`, `desktop_spatial_map`, `desktop_invoke`, `desktop_flow`, and more — no skill files or HTTP calls needed.
+
+**The UAB installer configures MCP automatically for Claude Desktop and Claude Code.** For other agents, follow the instructions below.
+
+### Claude Desktop (auto-configured by installer)
+
+The installer writes to `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+
+```json
+{
+  "mcpServers": {
+    "desktop-control": {
+      "command": "node",
+      "args": ["/path/to/uab/dist/mcp-server.js"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop after installation. The desktop control tools appear automatically in both chat and code mode.
+
+### Claude Code (auto-configured by installer)
+
+The installer adds the MCP permission to `~/.claude/settings.json`. To add manually via CLI:
+
+```bash
+claude mcp add desktop-control node /path/to/uab/dist/mcp-server.js
+```
+
+### Cursor
+
+Add to Cursor's MCP settings (Settings > MCP Servers > Add):
+
+```json
+{
+  "command": "node",
+  "args": ["/path/to/uab/dist/mcp-server.js"]
+}
+```
+
+### Windsurf / Other Editors
+
+Add to your editor's MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "desktop-control": {
+      "command": "node",
+      "args": ["/path/to/uab/dist/mcp-server.js"]
+    }
+  }
+}
+```
+
+### Generic MCP Client
+
+Any agent that supports MCP stdio transport can connect:
+
+- **Command**: `node`
+- **Args**: `["/path/to/uab/dist/mcp-server.js"]`
+- **Transport**: stdio (JSON-RPC 2.0 over stdin/stdout)
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `desktop_scan` | Discover all running GUI applications |
+| `desktop_connect` | Connect to an app by name or PID |
+| `desktop_spatial_map` | Full UI layout as structured rows/columns (RawViewWalker) |
+| `desktop_deep_query` | X-ray: find ALL elements including inner Electron web content |
+| `desktop_invoke` | Directly activate named element by best method |
+| `desktop_flow` | Get learned interaction flow for specific apps |
+| `desktop_smart_click` | Click by name with 6-method fallback cascade |
+| `desktop_chain` | Atomic multi-step action sequence (no focus loss) |
+| `desktop_keypress` | Send keyboard key |
+| `desktop_hotkey` | Send keyboard shortcut |
+| `desktop_act` | Click, type, select, expand, invoke by element ID |
+| `desktop_ui_tree` | Get UI element tree |
+| `desktop_find_elements` | Find elements by type/label |
+| `desktop_window` | Window management (minimize, maximize, etc.) |
+| `desktop_state` | Get app state and window properties |
+| `desktop_focused` | Get currently focused element |
+| `desktop_apps` | List previously discovered apps (instant) |
+
 ## Session 0 Bridge
 
 UAB works even when running in Session 0 (SSH, Windows Services). It automatically detects Session 0 and routes PowerShell through the Task Scheduler with `/IT` flag to bridge to the interactive desktop session.

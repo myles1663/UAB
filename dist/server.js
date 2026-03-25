@@ -434,37 +434,46 @@ $procCond = New-Object System.Windows.Automation.PropertyCondition(
 $win = $rootEl.FindFirst([System.Windows.Automation.TreeScope]::Children, $procCond)
 if (-not $win) { Write-Output '[]'; exit }
 
-$allCond = [System.Windows.Automation.Condition]::TrueCondition
-$allElements = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $allCond)
-
+$walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
 $results = @()
-foreach ($el in $allElements) {
-  $rawName = $el.Current.Name
-  $name = if ($rawName) { $rawName -replace '[^\\x20-\\x7E]', '' } else { '' }
-  $controlType = $el.Current.ControlType.ProgrammaticName -replace 'ControlType\\\\.', ''
-  $rawId = $el.Current.AutomationId
-  $automationId = if ($rawId) { $rawId -replace '[^\\x20-\\x7E]', '' } else { '' }
-  $rect = $el.Current.BoundingRectangle
+$stack = New-Object System.Collections.Stack
+$ch = $walker.GetFirstChild($win)
+while ($ch -or $stack.Count -gt 0) {
+  if ($ch) {
+    try {
+      $rawName = $ch.Current.Name
+      $name = if ($rawName) { $rawName -replace '[^\\x20-\\x7E]', '' } else { '' }
+      $controlType = $ch.Current.ControlType.ProgrammaticName -replace 'ControlType\\\\.', ''
+      $rawId = $ch.Current.AutomationId
+      $automationId = if ($rawId) { $rawId -replace '[^\\x20-\\x7E]', '' } else { '' }
+      $rect = $ch.Current.BoundingRectangle
 
-  $patterns = @()
-  try {
-    foreach ($p in $el.GetSupportedPatterns()) {
-      $pName = $p.ProgrammaticName -replace 'Identifiers\\\\.Pattern', '' -replace 'PatternIdentifiers\\\\.Pattern', ''
-      $patterns += $pName
-    }
-  } catch {}
+      $patterns = @()
+      try {
+        foreach ($p in $ch.GetSupportedPatterns()) {
+          $pName = $p.ProgrammaticName -replace 'Identifiers\\\\.Pattern', '' -replace 'PatternIdentifiers\\\\.Pattern', ''
+          $patterns += $pName
+        }
+      } catch {}
 
-  if ($name -or $automationId) {
-    $results += @{
-      name = $name
-      type = $controlType
-      id = $automationId
-      actions = ($patterns -join ',')
-      x = if ($rect.X -gt -99999 -and $rect.X -lt 99999) { [int]$rect.X } else { 0 }
-      y = if ($rect.Y -gt -99999 -and $rect.Y -lt 99999) { [int]$rect.Y } else { 0 }
-      w = if ($rect.Width -gt 0 -and $rect.Width -lt 99999) { [int]$rect.Width } else { 0 }
-      h = if ($rect.Height -gt 0 -and $rect.Height -lt 99999) { [int]$rect.Height } else { 0 }
-    }
+      if ($name -or $automationId) {
+        $results += @{
+          name = $name
+          type = $controlType
+          id = $automationId
+          actions = ($patterns -join ',')
+          x = if ($rect.X -gt -99999 -and $rect.X -lt 99999) { [int]$rect.X } else { 0 }
+          y = if ($rect.Y -gt -99999 -and $rect.Y -lt 99999) { [int]$rect.Y } else { 0 }
+          w = if ($rect.Width -gt 0 -and $rect.Width -lt 99999) { [int]$rect.Width } else { 0 }
+          h = if ($rect.Height -gt 0 -and $rect.Height -lt 99999) { [int]$rect.Height } else { 0 }
+        }
+      }
+    } catch {}
+    $stack.Push($ch)
+    $ch = $walker.GetFirstChild($ch)
+  } else {
+    $parent = $stack.Pop()
+    $ch = $walker.GetNextSibling($parent)
   }
 }
 
