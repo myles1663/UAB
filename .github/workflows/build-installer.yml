@@ -21,8 +21,8 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
-      - name: Build UAB
-        run: npm run build
+      - name: Build TypeScript
+        run: npx tsc --project tsconfig.json
 
       - name: Install installer dependencies
         working-directory: installer
@@ -50,8 +50,8 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
-      - name: Build UAB
-        run: npm run build
+      - name: Build TypeScript
+        run: npx tsc --project tsconfig.json
 
       - name: Install installer dependencies
         working-directory: installer
