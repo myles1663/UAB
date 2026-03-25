@@ -19,14 +19,14 @@ jobs:
           node-version: 20
 
       - name: Install root dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build TypeScript
         run: npx tsc --project tsconfig.json
 
       - name: Install installer dependencies
         working-directory: installer
-        run: npm ci
+        run: npm install
 
       - name: Build Windows installer
         working-directory: installer
@@ -48,14 +48,14 @@ jobs:
           node-version: 20
 
       - name: Install root dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build TypeScript
         run: npx tsc --project tsconfig.json
 
       - name: Install installer dependencies
         working-directory: installer
-        run: npm ci
+        run: npm install
 
       - name: Build macOS installer
         working-directory: installer
