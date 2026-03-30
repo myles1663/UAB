@@ -166,6 +166,82 @@ export function hoverAt(pid: number, x: number, y: number): ActionResult {
   }
 }
 
+/**
+ * Drag along a path of coordinates — P6 OS raw input injection.
+ * Moves to start, holds button, traverses waypoints, releases.
+ * button: 'left' (default), 'middle', 'right'
+ * stepDelay controls speed in ms between waypoints (default 10ms).
+ */
+export function dragPath(
+  pid: number,
+  path: Array<{ x: number; y: number }>,
+  stepDelay: number = 10,
+  button: 'left' | 'middle' | 'right' = 'left',
+): ActionResult {
+  if (!path || path.length < 2) {
+    return { success: false, error: 'Drag path requires at least 2 points (start + end)' };
+  }
+
+  // mouse_event flags: left=0x02/0x04, right=0x08/0x10, middle=0x20/0x40
+  const buttonDown = button === 'middle' ? '0x20' : button === 'right' ? '0x08' : '0x02';
+  const buttonUp = button === 'middle' ? '0x40' : button === 'right' ? '0x10' : '0x04';
+
+  const script = `${foregroundScript(pid)}
+# Move to start position
+[VisionInput]::SetCursorPos(${Math.round(path[0].x)}, ${Math.round(path[0].y)})
+[System.Threading.Thread]::Sleep(50)
+
+# Button down
+[VisionInput]::mouse_event(${buttonDown}, 0, 0, 0, [IntPtr]::Zero)
+[System.Threading.Thread]::Sleep(30)
+
+# Traverse waypoints
+$points = @(
+  ${path.slice(1).map(p => `@(${Math.round(p.x)}, ${Math.round(p.y)})`).join(',\n  ')}
+)
+foreach ($pt in $points) {
+  [VisionInput]::SetCursorPos($pt[0], $pt[1])
+  [VisionInput]::mouse_event(0x01, 0, 0, 0, [IntPtr]::Zero)
+  [System.Threading.Thread]::Sleep(${stepDelay})
+}
+
+# Button up
+[VisionInput]::mouse_event(${buttonUp}, 0, 0, 0, [IntPtr]::Zero)
+
+@{ success = $true; points = ${path.length}; button = '${button}' } | ConvertTo-Json -Compress
+`;
+  try {
+    return runPSJsonInteractive(script, 30000) as ActionResult;
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Scroll at absolute coordinates using mouse wheel injection.
+ * amount > 0 scrolls up, amount < 0 scrolls down. Each unit = 120 (one notch).
+ */
+export function scrollAt(
+  pid: number,
+  x: number,
+  y: number,
+  amount: number,
+): ActionResult {
+  const wheelDelta = amount * 120;
+  const script = `${foregroundScript(pid)}
+[VisionInput]::SetCursorPos(${Math.round(x)}, ${Math.round(y)})
+[System.Threading.Thread]::Sleep(50)
+# mouse_event MOUSEEVENTF_WHEEL = 0x0800
+[VisionInput]::mouse_event(0x0800, 0, 0, ${wheelDelta}, [IntPtr]::Zero)
+@{ success = $true } | ConvertTo-Json -Compress
+`;
+  try {
+    return runPSJsonInteractive(script, 10000) as ActionResult;
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ─── Keyboard Actions ────────────────────────────────────────
 
 // SendKeys format mapping

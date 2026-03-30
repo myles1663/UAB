@@ -26,7 +26,7 @@ export interface Bounds {
     height: number;
 }
 export type ElementType = 'window' | 'button' | 'textfield' | 'textarea' | 'checkbox' | 'radio' | 'select' | 'menu' | 'menuitem' | 'list' | 'listitem' | 'table' | 'tablerow' | 'tablecell' | 'tab' | 'tabpanel' | 'tree' | 'treeitem' | 'slider' | 'progressbar' | 'scrollbar' | 'toolbar' | 'statusbar' | 'dialog' | 'tooltip' | 'image' | 'link' | 'label' | 'heading' | 'separator' | 'container' | 'unknown';
-export type ActionType = 'click' | 'doubleclick' | 'rightclick' | 'type' | 'clear' | 'select' | 'scroll' | 'focus' | 'hover' | 'expand' | 'collapse' | 'invoke' | 'check' | 'uncheck' | 'toggle' | 'keypress' | 'hotkey' | 'minimize' | 'maximize' | 'restore' | 'close' | 'move' | 'resize' | 'screenshot' | 'contextmenu' | 'readDocument' | 'readCell' | 'writeCell' | 'readRange' | 'writeRange' | 'getSheets' | 'readFormula' | 'readSlides' | 'readSlideText' | 'readEmails' | 'composeEmail' | 'sendEmail' | 'getCookies' | 'setCookie' | 'deleteCookie' | 'clearCookies' | 'getLocalStorage' | 'setLocalStorage' | 'deleteLocalStorage' | 'clearLocalStorage' | 'getSessionStorage' | 'setSessionStorage' | 'deleteSessionStorage' | 'clearSessionStorage' | 'navigate' | 'goBack' | 'goForward' | 'reload' | 'getTabs' | 'switchTab' | 'closeTab' | 'newTab' | 'executeScript';
+export type ActionType = 'click' | 'doubleclick' | 'rightclick' | 'drag' | 'type' | 'clear' | 'select' | 'scroll' | 'focus' | 'hover' | 'expand' | 'collapse' | 'invoke' | 'check' | 'uncheck' | 'toggle' | 'keypress' | 'hotkey' | 'minimize' | 'maximize' | 'restore' | 'close' | 'move' | 'resize' | 'screenshot' | 'contextmenu' | 'readDocument' | 'readCell' | 'writeCell' | 'readRange' | 'writeRange' | 'getSheets' | 'readFormula' | 'readSlides' | 'readSlideText' | 'readEmails' | 'composeEmail' | 'sendEmail' | 'getCookies' | 'setCookie' | 'deleteCookie' | 'clearCookies' | 'getLocalStorage' | 'setLocalStorage' | 'deleteLocalStorage' | 'clearLocalStorage' | 'getSessionStorage' | 'setSessionStorage' | 'deleteSessionStorage' | 'clearSessionStorage' | 'navigate' | 'goBack' | 'goForward' | 'reload' | 'getTabs' | 'switchTab' | 'closeTab' | 'newTab' | 'executeScript';
 export interface ElementSelector {
     type?: ElementType;
     label?: string;
@@ -79,6 +79,14 @@ export interface ActionParams {
     storageValue?: string;
     tabId?: string;
     script?: string;
+    toX?: number;
+    toY?: number;
+    dragPath?: Array<{
+        x: number;
+        y: number;
+    }>;
+    stepDelay?: number;
+    button?: 'left' | 'middle' | 'right';
 }
 export interface ActionResult {
     success: boolean;

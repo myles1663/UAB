@@ -27,6 +27,21 @@ export declare function rightClickAt(pid: number, x: number, y: number): ActionR
  */
 export declare function hoverAt(pid: number, x: number, y: number): ActionResult;
 /**
+ * Drag along a path of coordinates — P6 OS raw input injection.
+ * Moves to start, holds button, traverses waypoints, releases.
+ * button: 'left' (default), 'middle', 'right'
+ * stepDelay controls speed in ms between waypoints (default 10ms).
+ */
+export declare function dragPath(pid: number, path: Array<{
+    x: number;
+    y: number;
+}>, stepDelay?: number, button?: 'left' | 'middle' | 'right'): ActionResult;
+/**
+ * Scroll at absolute coordinates using mouse wheel injection.
+ * amount > 0 scrolls up, amount < 0 scrolls down. Each unit = 120 (one notch).
+ */
+export declare function scrollAt(pid: number, x: number, y: number, amount: number): ActionResult;
+/**
  * Send a single keypress to the foreground window.
  */
 export declare function sendKeypress(pid: number, key: string): ActionResult;

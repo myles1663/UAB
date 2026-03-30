@@ -406,6 +406,34 @@ export class UABServer {
             const result = await conn.window(pid, action, body.params);
             return { pid, action, ...result };
         });
+        // P6 — OS raw input injection: drag along a coordinate path
+        this.routes.set('/drag', async (body) => {
+            const pid = body.pid;
+            const path = body.path;
+            const stepDelay = body.stepDelay || 10;
+            const button = body.button || 'left';
+            if (!pid)
+                throw new Error('Missing required field: pid');
+            if (!path || !Array.isArray(path) || path.length < 2) {
+                throw new Error('Missing required field: path (array of {x,y} with at least 2 points)');
+            }
+            const { dragPath } = await import('./plugins/vision/input.js');
+            const result = dragPath(pid, path, stepDelay, button);
+            return { pid, ...result };
+        });
+        // P6 — OS raw input injection: scroll at coordinates
+        this.routes.set('/scroll', async (body) => {
+            const pid = body.pid;
+            const x = body.x;
+            const y = body.y;
+            const amount = body.amount;
+            if (!pid || x === undefined || y === undefined || amount === undefined) {
+                throw new Error('Missing required fields: pid, x, y, amount');
+            }
+            const { scrollAt } = await import('./plugins/vision/input.js');
+            const result = scrollAt(pid, x, y, amount);
+            return { pid, ...result };
+        });
         this.routes.set('/screenshot', async (body, conn) => {
             const pid = body.pid;
             if (!pid)

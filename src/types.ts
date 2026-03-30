@@ -41,7 +41,7 @@ export type ElementType =
   | 'separator' | 'container' | 'unknown';
 
 export type ActionType =
-  | 'click' | 'doubleclick' | 'rightclick'
+  | 'click' | 'doubleclick' | 'rightclick' | 'drag'
   | 'type' | 'clear' | 'select' | 'scroll'
   | 'focus' | 'hover' | 'expand' | 'collapse'
   | 'invoke' | 'check' | 'uncheck' | 'toggle'
@@ -125,6 +125,12 @@ export interface ActionParams {
   storageValue?: string;  // localStorage/sessionStorage value
   tabId?: string;         // Tab/target ID
   script?: string;        // JavaScript to execute
+  // P6 drag/gesture params
+  toX?: number;           // Drag destination X
+  toY?: number;           // Drag destination Y
+  dragPath?: Array<{ x: number; y: number }>;  // Full drag path (waypoints)
+  stepDelay?: number;     // Delay between waypoints in ms (default 10)
+  button?: 'left' | 'middle' | 'right';  // Mouse button for drag (default: left)
 }
 
 export interface ActionResult {

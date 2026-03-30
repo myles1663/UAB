@@ -941,6 +941,46 @@ Returns: `{ "pid": 1234, "screenshot": "path/to/file.png", "description": "..." 
 | POST | `/window` | `{ pid: number, action: string, params?: object }` | Window control |
 | POST | `/screenshot` | `{ pid: number, outputPath?: string }` | Capture screenshot |
 
+#### P6 — OS Raw Input Injection
+
+Direct OS-level mouse input injection. Used for continuous spatial gestures (sculpting, painting, drawing, drag-and-drop). The application cannot distinguish injected input from human input.
+
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| POST | `/drag` | `{ pid: number, path: [{x,y},...], button?: string, stepDelay?: number }` | Drag along coordinate path |
+| POST | `/scroll` | `{ pid: number, x: number, y: number, amount: number }` | Scroll at coordinates |
+
+**`/drag` parameters:**
+- `pid` — Target process ID
+- `path` — Array of `{x, y}` waypoints (minimum 2 points). Screen coordinates.
+- `button` — `"left"` (default), `"middle"`, or `"right"`
+- `stepDelay` — Milliseconds between waypoints (default: 10). Use 25-40ms for natural brush strokes.
+
+**`/scroll` parameters:**
+- `pid` — Target process ID
+- `x`, `y` — Screen coordinates where the scroll occurs
+- `amount` — Scroll notches. Positive = up, negative = down. Each unit = 120 wheel delta.
+
+**Example — Sculpt brush stroke in Blender:**
+```bash
+curl -X POST http://localhost:3100/drag -d '{
+  "pid": 67364,
+  "button": "left",
+  "path": [{"x":1200,"y":400},{"x":1250,"y":390},{"x":1300,"y":385},{"x":1350,"y":390},{"x":1400,"y":400}],
+  "stepDelay": 30
+}'
+```
+
+**Example — Orbit camera with middle-mouse drag:**
+```bash
+curl -X POST http://localhost:3100/drag -d '{
+  "pid": 67364,
+  "button": "middle",
+  "path": [{"x":1200,"y":500},{"x":1200,"y":400},{"x":1200,"y":300}],
+  "stepDelay": 25
+}'
+```
+
 #### Diagnostics
 
 | Method | Path | Body | Description |

@@ -222,6 +222,42 @@ UAB now correctly resolves multi-process Electron apps. When multiple processes 
 
 ---
 
+## Blender
+
+**Framework:** OpenGL (zero accessibility tree)
+**Control Method:** Concerto — Keyboard (P5) for commands, OS Raw Input Injection (P6) for sculpting/painting, Screenshot for verification
+
+### Verified Operations
+
+| Operation | Method | Status | Notes |
+|-----------|--------|--------|-------|
+| Create objects | Keyboard (F3 search) | ✅ Verified | Add UV Sphere, Cube, etc. |
+| Transform objects | Keyboard (G/S/R) | ✅ Verified | Move, scale, rotate with axis lock |
+| Switch modes | Keyboard (Ctrl+Tab) | ✅ Verified | Object, Edit, Sculpt mode pie menu |
+| Subdivide for sculpt | Keyboard (Ctrl+N) | ✅ Verified | Multiresolution modifier levels |
+| Resize brush | Keyboard (F + move) | ✅ Verified | F key, mouse move, click to confirm |
+| Sculpt brush strokes | P6 Drag (left button) | ✅ Verified | Draw, Clay, Smooth — continuous spatial gestures |
+| Orbit camera | P6 Drag (middle button) | ✅ Verified | Middle-mouse drag to rotate view |
+| Zoom | P6 Scroll | ✅ Verified | Scroll wheel injection at coordinates |
+| Verify results | Screenshot | ✅ Verified | Only way to see OpenGL viewport state |
+
+### Key Insight: The Concerto
+
+Blender has zero accessibility tree — UIA sees only the window (childCount: 0). But with the concerto approach, full control is achieved by blending methods:
+
+1. **Keyboard** for every command, shortcut, menu, tool switch
+2. **P6 Drag** for sculpt strokes, camera orbit — operations requiring continuous mouse motion
+3. **P6 Scroll** for viewport zoom
+4. **Screenshot** for reading state and verifying results
+
+No single method can control Blender alone. All four together achieve complete control.
+
+### Achievement
+
+> **First known AI agent to sculpt 3D geometry in Blender.** Verified 2026-03-29. Vision-guided brush strokes via OS input injection, keyboard for all commands, screenshot for verification loop.
+
+---
+
 ## Universal Fallback
 
 Any Windows application with a graphical window can be controlled via **WinUIAPlugin**, even if no specific framework is detected. This includes:
@@ -237,13 +273,14 @@ The `unknown` framework type automatically routes to Win-UIA.
 
 ## Framework Coverage Matrix
 
-| Framework | Detect | Connect | Enumerate | Query | Act | Keyboard | Window | Screenshot |
-|-----------|--------|---------|-----------|-------|-----|----------|--------|------------|
-| Electron | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Browser | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Office | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Qt 5/6 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| GTK 3/4 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Flutter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Java | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Win32/WPF | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Framework | Detect | Connect | Enumerate | Query | Act | Keyboard | Drag/Scroll | Window | Screenshot |
+|-----------|--------|---------|-----------|-------|-----|----------|-------------|--------|------------|
+| Electron | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Browser | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Office | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Qt 5/6 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| GTK 3/4 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Flutter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Java | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Win32/WPF | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| OpenGL | ✅ | — | — | — | — | ✅ | ✅ | ✅ | ✅ |

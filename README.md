@@ -1,6 +1,6 @@
 # Universal App Bridge (UAB)
 
-[![Tests](https://img.shields.io/badge/tests-172%20passing-brightgreen)]() [![Version](https://img.shields.io/badge/version-1.0.0-blue)]() [![License](https://img.shields.io/badge/license-BSL%201.1-blue)]() [![Node](https://img.shields.io/badge/node-%3E%3D18-green)]() [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)]()
+[![Tests](https://img.shields.io/badge/tests-172%20passing-brightgreen)]() [![Version](https://img.shields.io/badge/version-1.3.0-blue)]() [![License](https://img.shields.io/badge/license-BSL%201.1-blue)]() [![Node](https://img.shields.io/badge/node-%3E%3D18-green)]() [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)]()
 
 **Smart function discovery and framework-level desktop app control for AI agents.**
 
@@ -158,6 +158,10 @@ curl -X POST http://localhost:3100/open -d '{"target":"notepad"}'
 curl -X POST http://localhost:3100/focus -d '{"pid":1234}'
 curl -X POST http://localhost:3100/describe -d '{"pid":1234}'
 
+# P6 — OS raw input injection for spatial gestures
+curl -X POST http://localhost:3100/drag -d '{"pid":1234,"path":[{"x":100,"y":200},{"x":300,"y":200}],"button":"left"}'
+curl -X POST http://localhost:3100/scroll -d '{"pid":1234,"x":500,"y":400,"amount":3}'
+
 # Health check
 curl http://localhost:3100/health
 ```
@@ -245,19 +249,21 @@ Agent Runtime (Claude / GPT / Any AI Agent)
 
 ### The Cascade Pattern
 
-UAB picks the best control method for each app automatically, falling back through the stack if something fails:
+UAB picks the best control method for each operation automatically. It's a concerto — each micro-operation uses the most efficient method based on speed, outcome quality, control precision, and cost:
 
 ```
 Priority 1: Chrome Extension Bridge (browsers — no relaunch needed)
 Priority 2: CDP Browser Plugin (browsers — with debug flag)
 Priority 3: Framework Hook (Electron CDP, Office COM)
 Priority 4: Windows UI Automation (accessibility fallback — any windowed app)
-Priority 5: Vision (screenshot + Claude Vision API + coordinate input — last resort)
+Priority 5: Keyboard Native (shortcuts, hotkeys, text input — fastest for commands)
+Priority 6: OS Raw Input Injection (drag, scroll, gestures — SendInput/CGEventPost/xdotool)
+     Vision: Screenshot + AI (reading state, verifying results — the agent's eyes)
 ```
 
-If a CDP connection drops mid-session, the router transparently falls back to UIA — and if UIA fails too, Vision takes a screenshot and uses AI to identify elements. The agent never sees the switch.
+The cascade isn't "pick one method per app" — it's "pick the right method for each operation." A single Blender sculpting session uses keyboard for commands (Ctrl+Tab, Ctrl+4), drag for brush strokes, scroll for zooming, and screenshots for verification. Five methods in one workflow. That's the concerto.
 
-> **Vision fallback** works like Anthropic's computer use tool: screenshot → Claude analyzes the image → returns element coordinates → UAB clicks at (x,y). It's expensive (API call per analysis) and slow, but works with *anything* visible on screen. Requires `ANTHROPIC_API_KEY`.
+> **P6 — OS Raw Input Injection** injects mouse drag, scroll, and gesture events directly into the OS input stream via `SendInput()`. Any application receives these exactly as if a human moved the mouse. This enables sculpting in Blender, painting in Photoshop, drawing in any canvas app — operations that require continuous held-button mouse movement.
 
 ## Smart Discovery Deep Dive
 

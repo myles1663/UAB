@@ -427,11 +427,31 @@ Priority 4: Windows UI Automation
    │   fail
    ▼
 Priority 5: Vision (Screenshot + AI)
-   │   Last resort. Screenshot → Claude Vision API → coordinate input.
-   │   Like Anthropic's computer use tool. Expensive but truly universal.
+   │   Last resort for element discovery. Screenshot → Claude Vision API → coordinate input.
    │   Coverage: Anything visible on screen
    │   (requires ANTHROPIC_API_KEY)
+   │   fail
+   ▼
+Priority 6: OS Raw Input Injection
+      SendInput() on Windows, CGEventPost() on macOS, xdotool on Linux.
+      Injects mouse drag, scroll, and gesture events directly into the OS input stream.
+      Coverage: ANY application — the app cannot distinguish injected input from human input.
+      Used for: continuous spatial gestures (sculpting, painting, drawing, drag-and-drop)
+      NOT used for: commands, menu navigation, text input (keyboard is faster/cheaper)
 ```
+
+### The Concerto Principle
+
+The cascade is NOT "pick one method per app." It's a concerto — for each micro-operation within a task, the agent picks the most efficient method. Efficiency means four things: **speed**, **outcome quality**, **control precision**, and **cost**.
+
+A typical Blender sculpting session uses 5 methods in a single workflow:
+- **Keyboard** (P5): Ctrl+Tab to switch mode, Ctrl+4 to subdivide, F to resize brush
+- **Scroll** (P6): zoom in/out on the viewport
+- **Drag** (P6): sculpt brush strokes across the mesh surface
+- **Screenshot** (Vision): verify the sculpt result after each stroke
+- **Middle-drag** (P6): orbit the camera to check from different angles
+
+The agent switches methods per micro-operation, not per app. That's the concerto.
 
 ### Why This Order?
 
@@ -441,7 +461,8 @@ Priority 5: Vision (Screenshot + AI)
 | CDP (browser) | Fast | High | Chromium only | Free | Requires debug flag |
 | Framework Hook | Fast | High | Framework-specific | Free | Sometimes requires app relaunch |
 | Win-UIA | Moderate | Good | Universal | Free | None |
-| **Vision** | **Slow** | **Variable** | **Universal** | **API call** | **None** |
+| Vision | Slow | Variable | Universal | API call | None |
+| **OS Input Injection** | **Fast** | **Perfect** | **Universal** | **Free** | **None** |
 
 ### Automatic Fallback
 

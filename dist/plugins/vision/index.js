@@ -19,7 +19,7 @@
  *   - But UNIVERSAL — works when nothing else does
  */
 import { VisionAnalyzer } from './analyzer.js';
-import { clickAt, doubleClickAt, rightClickAt, hoverAt, typeTextAt, sendKeypress, sendHotkey, windowAction, captureScreenshot, getWindowBounds, } from './input.js';
+import { clickAt, doubleClickAt, rightClickAt, hoverAt, dragPath, typeTextAt, sendKeypress, sendHotkey, windowAction, captureScreenshot, getWindowBounds, } from './input.js';
 // ─── Plugin ──────────────────────────────────────────────────
 export class VisionPlugin {
     framework = 'unknown';
@@ -198,6 +198,20 @@ class VisionConnection {
                 return rightClickAt(this.app.pid, cx, cy);
             case 'hover':
                 return hoverAt(this.app.pid, cx, cy);
+            case 'drag': {
+                const btn = params?.button || 'left';
+                // Drag from element center to target, or along a path
+                if (params?.dragPath && Array.isArray(params.dragPath)) {
+                    return dragPath(this.app.pid, params.dragPath, params.stepDelay || 10, btn);
+                }
+                if (params?.toX !== undefined && params?.toY !== undefined) {
+                    return dragPath(this.app.pid, [
+                        { x: cx, y: cy },
+                        { x: params.toX, y: params.toY },
+                    ], params.stepDelay || 10, btn);
+                }
+                return { success: false, error: 'Drag requires either dragPath:[{x,y},...] or toX/toY params' };
+            }
             case 'type':
                 if (!params?.text)
                     return { success: false, error: 'No text provided' };

@@ -69,6 +69,15 @@ Future development plans for Universal App Bridge.
 ### Phase 6 — Anti-Screenshot SDK (v1.2.0)
 - ✅ Spatial maps, composite engine, MCP server, atomic chains, smart invoke, focus tracking
 
+### Phase 7 — The Concerto / P6 Raw Input Injection (v1.3.0)
+- ✅ OS-level mouse drag injection via `SendInput()` — `/drag` endpoint with left/middle/right button support
+- ✅ OS-level scroll wheel injection — `/scroll` endpoint at arbitrary coordinates
+- ✅ `drag` action type in Vision plugin with waypoint paths and simple A→B drag
+- ✅ Concerto Principle in flow library — per-operation method selection (speed + outcome + control + cost)
+- ✅ Blender sculpting verified — first AI agent to sculpt 3D geometry (keyboard + drag + screenshot concerto)
+- ✅ 6-tier cascade: P1 Extension → P2 CDP → P3 Framework → P4 UIA → P5 Keyboard → P6 OS Input Injection
+- ✅ Vision-guided drag loop: screenshot → plan path → inject drag → screenshot → verify → repeat
+
 ---
 
 ## Near-Term

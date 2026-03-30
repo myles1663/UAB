@@ -1,5 +1,52 @@
 {
   "description": "Default flow templates by framework type. Used when no app-specific flow exists.",
+  "concerto_principle": {
+    "rule": "UAB is a concerto — never stick to one input method. For EACH micro-operation, choose the most EFFICIENT method. Efficiency = speed + outcome quality + control precision + cost. This applies to EVERY app, not just specific ones.",
+    "decision": "For each micro-operation ask: What is the fastest way to do THIS operation that gives me the best outcome with the most control at the lowest cost? Then use that method. Switch methods freely within a single task — switching is the norm, not the exception.",
+    "efficiency_guide": {
+      "keyboard_shortcut": {
+        "when": "The operation has a known shortcut or can be typed",
+        "why_efficient": "Fastest (instant), most reliable (no coordinate guessing), cheapest (one API call), highest control (deterministic)",
+        "examples": "Ctrl+S save, Ctrl+Z undo, Tab switch mode, F3 search, typing text, hotkey combos"
+      },
+      "ui_automation": {
+        "when": "Need to find or read a specific UI element by name/type, or the app has a rich accessibility tree",
+        "why_efficient": "Most accurate for element discovery (finds by name not coordinates), reads state without screenshots",
+        "examples": "Finding a button labeled 'Submit', reading a text field value, checking if a checkbox is checked"
+      },
+      "drag": {
+        "when": "The operation REQUIRES continuous held-button mouse movement — no keyboard equivalent exists",
+        "why_efficient": "Only method that can express spatial gestures. Without it, sculpting/painting/drawing is impossible",
+        "examples": "Sculpt brush strokes, paint strokes, slider adjustments, drag-and-drop, freeform drawing, resizing by handle"
+      },
+      "scroll": {
+        "when": "Zooming, scrolling content, navigating maps or timelines",
+        "why_efficient": "Direct wheel injection — faster and more precise than Page Up/Down keys for spatial navigation",
+        "examples": "Zoom in Blender/maps, scroll a document, navigate a timeline"
+      },
+      "screenshot": {
+        "when": "Need to see what's on screen, verify an action worked, or the app has no accessibility tree",
+        "why_efficient": "Only way to read visual state. Essential verification step after spatial operations",
+        "examples": "Verify sculpt result, read OpenGL UI, check visual layout, confirm action completed"
+      },
+      "clipboard": {
+        "when": "Need to transfer text reliably, especially into apps that mangle SendKeys input",
+        "why_efficient": "Most reliable text transfer for Electron apps and complex strings (Unicode, special chars)",
+        "examples": "Pasting into chat apps, transferring formatted text, emoji-containing strings"
+      },
+      "cdp_or_extension": {
+        "when": "Browser or Electron app needs DOM-level interaction or JavaScript execution",
+        "why_efficient": "Semantic access to page content — can read/modify DOM directly without coordinate guessing",
+        "examples": "Reading page text, clicking by CSS selector, executing JavaScript, managing cookies"
+      }
+    },
+    "anti_patterns": [
+      "Sticking to one method for an entire task — every task is a concerto",
+      "Using drag/click to navigate menus when a keyboard shortcut exists (slower, less reliable, more expensive)",
+      "Avoiding drag when the task genuinely requires spatial input (limiting your capabilities)",
+      "Skipping screenshot verification after spatial operations (flying blind)"
+    ]
+  },
   "frameworks": {
     "Electron": {
       "input_method": "click_then_clipboard_paste",

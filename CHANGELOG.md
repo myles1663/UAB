@@ -2,6 +2,25 @@
 
 All notable changes to Universal App Bridge will be documented in this file.
 
+## v1.3.0 — The Concerto (P6 Raw Input Injection)
+
+### Added
+- **`/drag` endpoint** — OS-level mouse drag injection via `SendInput()`. Supports left/middle/right button, arbitrary waypoint paths, configurable step delay. Enables sculpting, painting, drawing, drag-and-drop in any application.
+- **`/scroll` endpoint** — OS-level scroll wheel injection at arbitrary screen coordinates.
+- **`dragPath()` function** (`input.ts`) — Core P6 primitive: button down → traverse waypoints → button up. Supports left, middle, and right mouse buttons.
+- **`scrollAt()` function** (`input.ts`) — Scroll wheel injection at coordinates.
+- **`drag` action type** — Available through `/act` endpoint on Vision plugin connections. Supports `dragPath` (waypoint array) or `toX/toY` (simple A→B drag).
+- **Concerto Principle** in `_defaults.json` — Universal decision framework: for each micro-operation, pick the most efficient method (speed + outcome + control + cost). Applies to every app, not just specific ones.
+- **Blender flow v2.0** — Updated from `keyboard_shortcuts_only` to `concerto` with `concerto_rules` mapping operation types to optimal methods. Includes sculpting workflow example.
+
+### Changed
+- **Priority cascade expanded to P6** — P1 Chrome Extension → P2 CDP → P3 Framework hooks → P4 UI Automation → P5 Keyboard native → P6 OS raw input injection. Vision provides the verification loop.
+- **Flow library philosophy** — Apps no longer declare a single `input_method`. Each operation type maps to the most efficient tier. The concerto principle replaces "pick one method."
+- Architecture docs, README, and API reference updated to reflect 6-tier cascade and concerto principle.
+
+### Achievement
+- **First known AI agent to sculpt 3D geometry** — Blender sculpt mode with vision-guided brush strokes via P6 input injection. Keyboard for commands, drag for brush strokes, screenshot for verification. Zero accessibility tree, full spatial control.
+
 ## v1.2.0 — Anti-Screenshot SDK
 
 ### Added
