@@ -18,6 +18,7 @@ import { WinUIAPlugin } from '../win-uia/index.js';
 export class JavaPlugin {
     framework = 'java-swing';
     name = 'Java (UIA via JAB)';
+    controlMethod = 'java-jab-uia';
     uiaPlugin = new WinUIAPlugin();
     canHandle(app) {
         return app.framework === 'java-swing' || app.framework === 'javafx';

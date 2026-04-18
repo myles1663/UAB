@@ -17,6 +17,7 @@ import { FrameworkPlugin, PluginConnection, DetectedApp } from '../../types.js';
 export declare class FlutterPlugin implements FrameworkPlugin {
     readonly framework: "flutter";
     readonly name = "Flutter (UIA Bridge)";
+    readonly controlMethod: "flutter-uia";
     private uiaPlugin;
     canHandle(app: DetectedApp): boolean;
     connect(app: DetectedApp): Promise<PluginConnection>;

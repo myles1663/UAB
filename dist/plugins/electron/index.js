@@ -16,6 +16,7 @@ import { runPSJsonInteractive } from '../../ps-exec.js';
 export class ElectronPlugin {
     framework = 'electron';
     name = 'Electron (CDP)';
+    controlMethod = 'electron-cdp';
     canHandle(app) {
         return app.framework === 'electron';
     }

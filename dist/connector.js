@@ -48,6 +48,7 @@ import { ElectronPlugin } from './plugins/electron/index.js';
 import { BrowserPlugin } from './plugins/browser/index.js';
 import { ChromeExtPlugin } from './plugins/chrome-ext/index.js';
 import { ExtensionWSServer } from './plugins/chrome-ext/ws-server.js';
+import { DirectApiPlugin } from './plugins/direct-api/index.js';
 import { WinUIAPlugin } from './plugins/win-uia/index.js';
 import { QtPlugin } from './plugins/qt/index.js';
 import { GtkPlugin } from './plugins/gtk/index.js';
@@ -61,6 +62,7 @@ import { withRetry } from './retry.js';
 import { ConnectionManager } from './connection-manager.js';
 import { AppRegistry } from './registry.js';
 import { CompositeEngine } from './composite.js';
+import { getConcertoMethodInventory, planOperation } from './concerto.js';
 // ─── Connector ──────────────────────────────────────────────────
 export class UABConnector {
     registry;
@@ -112,6 +114,7 @@ export class UABConnector {
             }
         }
         // Register plugins (priority order: specific → generic)
+        this.pluginManager.register(new DirectApiPlugin());
         if (this.extensionServer) {
             this.pluginManager.register(new ChromeExtPlugin(this.extensionServer));
         }
@@ -167,6 +170,19 @@ export class UABConnector {
      */
     apps() {
         return this.registry.all();
+    }
+    /**
+     * List the framework hooks that are currently registered in this connector.
+     * This is the source of truth for what the standalone runtime can actually use.
+     */
+    hookInventory() {
+        return this.pluginManager.getHookInventory();
+    }
+    signatureInventory() {
+        return this.detector.getSignatureInventory();
+    }
+    concertoInventory() {
+        return getConcertoMethodInventory();
     }
     /**
      * Search registry by name (fuzzy, case-insensitive).
@@ -249,7 +265,7 @@ export class UABConnector {
             pid: app.pid,
             name: app.name,
             framework: app.framework,
-            method: conn.method || 'uab-hook',
+            method: conn.method || 'unknown',
             elementCount: count,
         };
     }
@@ -329,7 +345,12 @@ export class UABConnector {
     async keypress(pid, key) {
         this.ensureConnected(pid);
         const route = this.router.getRoute(pid);
-        const result = await route.connection.act('', 'keypress', { key });
+        const plan = planOperation(route.method, 'keypress', route.fallbacks);
+        if (plan.primaryMethod !== 'keyboard-native') {
+            throw new Error(`Unexpected concerto plan for keypress: ${plan.primaryMethod}`);
+        }
+        const { sendKeypress } = await import('./plugins/vision/input.js');
+        const result = sendKeypress(pid, key);
         this.cache.invalidateIfNeeded(pid, 'keypress');
         return result;
     }
@@ -337,10 +358,37 @@ export class UABConnector {
     async hotkey(pid, keys) {
         this.ensureConnected(pid);
         const route = this.router.getRoute(pid);
+        const plan = planOperation(route.method, 'hotkey', route.fallbacks);
+        if (plan.primaryMethod !== 'keyboard-native') {
+            throw new Error(`Unexpected concerto plan for hotkey: ${plan.primaryMethod}`);
+        }
         const keyArray = typeof keys === 'string' ? keys.split('+').map(k => k.trim()) : keys;
-        const result = await route.connection.act('', 'hotkey', { keys: keyArray });
+        const { sendHotkey } = await import('./plugins/vision/input.js');
+        const result = sendHotkey(pid, keyArray);
         this.cache.invalidateIfNeeded(pid, 'hotkey');
         return result;
+    }
+    /** P6 raw input injection — drag along a waypoint path. */
+    async drag(pid, path, stepDelay = 10, button = 'left') {
+        this.ensureConnected(pid);
+        const route = this.router.getRoute(pid);
+        const plan = planOperation(route.method, 'drag', route.fallbacks);
+        if (plan.primaryMethod !== 'os-input-injection') {
+            throw new Error(`Unexpected concerto plan for drag: ${plan.primaryMethod}`);
+        }
+        const { dragPath } = await import('./plugins/vision/input.js');
+        return dragPath(pid, path, stepDelay, button);
+    }
+    /** P6 raw input injection — scroll at absolute coordinates. */
+    async scroll(pid, x, y, amount) {
+        this.ensureConnected(pid);
+        const route = this.router.getRoute(pid);
+        const plan = planOperation(route.method, 'scroll', route.fallbacks);
+        if (plan.primaryMethod !== 'os-input-injection') {
+            throw new Error(`Unexpected concerto plan for scroll: ${plan.primaryMethod}`);
+        }
+        const { scrollAt } = await import('./plugins/vision/input.js');
+        return scrollAt(pid, x, y, amount);
     }
     /** Window management (minimize, maximize, restore, close, move, resize). */
     async window(pid, action, params) {
@@ -357,6 +405,7 @@ export class UABConnector {
     async screenshot(pid, outputPath) {
         this.ensureConnected(pid);
         const route = this.router.getRoute(pid);
+        void planOperation(route.method, 'screenshot', route.fallbacks);
         const path = outputPath || `data/screenshots/uab-${pid}-${Date.now()}.png`;
         // Ensure directory exists
         const { mkdirSync, readFileSync, existsSync } = await import('fs');
@@ -371,6 +420,11 @@ export class UABConnector {
             }
         }
         return result;
+    }
+    planOperation(pid, action) {
+        this.ensureConnected(pid);
+        const route = this.router.getRoute(pid);
+        return planOperation(route.method, action, route.fallbacks);
     }
     // ─── Diagnostics ────────────────────────────────────────────────
     /** Get cache hit statistics. */

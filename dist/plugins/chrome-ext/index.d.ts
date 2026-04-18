@@ -14,6 +14,7 @@ import { ExtensionWSServer } from './ws-server.js';
 export declare class ChromeExtPlugin implements FrameworkPlugin {
     readonly framework: "browser";
     readonly name = "Chrome Extension Bridge";
+    readonly controlMethod: "chrome-extension";
     private wsServer;
     private connections;
     constructor(wsServer: ExtensionWSServer);

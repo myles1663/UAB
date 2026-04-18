@@ -4,7 +4,7 @@
  * Manages framework plugin registration and routing.
  * Supports multiple plugins and selects the best one via canHandle().
  */
-import type { DetectedApp, FrameworkPlugin, FrameworkType, PluginConnection } from '../types.js';
+import type { DetectedApp, FrameworkHookDescriptor, FrameworkPlugin, FrameworkType, PluginConnection } from '../types.js';
 export declare class PluginManager {
     private plugins;
     private connections;
@@ -17,6 +17,7 @@ export declare class PluginManager {
      * Get all registered framework types (unique).
      */
     getRegisteredFrameworks(): FrameworkType[];
+    getHookInventory(): FrameworkHookDescriptor[];
     /**
      * Check if any plugin can handle the given framework.
      */
@@ -25,6 +26,8 @@ export declare class PluginManager {
      * Find the best plugin for an app by trying each in order.
      */
     findPlugin(app: DetectedApp): FrameworkPlugin | null;
+    getCandidatePlugins(app: DetectedApp): FrameworkPlugin[];
+    findPluginByMethod(app: DetectedApp, method: string): FrameworkPlugin | null;
     /**
      * Connect to an app using the best available plugin.
      */

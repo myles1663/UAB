@@ -43,7 +43,8 @@
  */
 import { AppRegistry } from './registry.js';
 import type { AppProfile } from './registry.js';
-import type { UIElement, ElementSelector, ActionType, ActionParams, ActionResult, AppState, FocusedElementInfo, PathSelector, AtomicChainDef, AtomicChainResult, SmartResolveResult, StateChangeEvent } from './types.js';
+import type { UIElement, ElementSelector, ActionType, ActionParams, ActionResult, AppState, FocusedElementInfo, PathSelector, AtomicChainDef, AtomicChainResult, SmartResolveResult, StateChangeEvent, FrameworkHookDescriptor } from './types.js';
+import type { FrameworkSignature } from './detector.js';
 import { CompositeEngine } from './composite.js';
 import type { CompositeResult, CompositeOptions } from './composite.js';
 import type { SpatialElement } from './spatial.js';
@@ -97,6 +98,13 @@ export declare class UABConnector {
      */
     apps(): AppProfile[];
     /**
+     * List the framework hooks that are currently registered in this connector.
+     * This is the source of truth for what the standalone runtime can actually use.
+     */
+    hookInventory(): FrameworkHookDescriptor[];
+    signatureInventory(): FrameworkSignature[];
+    concertoInventory(): import("./types.js").ConcertoMethodDescriptor[];
+    /**
      * Search registry by name (fuzzy, case-insensitive).
      * If no results in registry, falls back to live detection.
      */
@@ -125,6 +133,13 @@ export declare class UABConnector {
     keypress(pid: number, key: string): Promise<ActionResult>;
     /** Send a hotkey combination (e.g., "ctrl+s" or ['ctrl', 's']). */
     hotkey(pid: number, keys: string | string[]): Promise<ActionResult>;
+    /** P6 raw input injection — drag along a waypoint path. */
+    drag(pid: number, path: Array<{
+        x: number;
+        y: number;
+    }>, stepDelay?: number, button?: 'left' | 'middle' | 'right'): Promise<ActionResult>;
+    /** P6 raw input injection — scroll at absolute coordinates. */
+    scroll(pid: number, x: number, y: number, amount: number): Promise<ActionResult>;
     /** Window management (minimize, maximize, restore, close, move, resize). */
     window(pid: number, action: string, params?: {
         x?: number;
@@ -134,6 +149,7 @@ export declare class UABConnector {
     }): Promise<ActionResult>;
     /** Capture a screenshot of the app window. Returns path + base64 data. */
     screenshot(pid: number, outputPath?: string): Promise<ActionResult>;
+    planOperation(pid: number, action: ActionType | 'describe'): import("./types.js").OperationPlan;
     /** Get cache hit statistics. */
     cacheStats(): {
         hitRate: number;

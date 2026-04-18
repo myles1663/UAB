@@ -24,6 +24,8 @@ export { UABConnector } from './connector.js';
 export { AppRegistry } from './registry.js';
 // ─── Core Service (Kai integration) ──────────────────────────────
 export { UABService, uab } from './service.js';
+export { FRAMEWORK_HOOKS, describeControlMethod } from './hooks.js';
+export { getConcertoMethodInventory, planOperation } from './concerto.js';
 // ─── Detection & Routing ────────────────────────────────────────
 export { FrameworkDetector } from './detector.js';
 export { ControlRouter, RoutedConnection } from './router.js';
@@ -46,6 +48,7 @@ export { GtkPlugin } from './plugins/gtk/index.js';
 export { JavaPlugin } from './plugins/java/index.js';
 export { FlutterPlugin } from './plugins/flutter/index.js';
 export { OfficePlugin } from './plugins/office/index.js';
+export { DirectApiPlugin } from './plugins/direct-api/index.js';
 // ─── Environment Detection ──────────────────────────────────────
 export { detectEnvironment, getDefaults, resetEnvironment, env } from './environment.js';
 // ─── HTTP Server (Server-Side Access) ───────────────────────────

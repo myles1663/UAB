@@ -34,10 +34,115 @@ function identifyOfficeApp(app) {
     const name = app.name.toLowerCase();
     return OFFICE_PROCESS_MAP[name] || OFFICE_PROCESS_MAP[name + '.exe'] || 'other';
 }
+function escapePs(value) {
+    return value.replace(/'/g, "''");
+}
+function normalizeAggregation(aggregation) {
+    switch ((aggregation || 'sum').toLowerCase()) {
+        case 'count': return '-4112'; // xlCount
+        case 'average': return '-4106'; // xlAverage
+        case 'min': return '-4139'; // xlMin
+        case 'max': return '-4136'; // xlMax
+        case 'sum':
+        default:
+            return '-4157'; // xlSum
+    }
+}
+function normalizeChartType(chartType) {
+    switch ((chartType || 'column').toLowerCase()) {
+        case 'bar': return '57'; // xlBarClustered
+        case 'line': return '4'; // xlLine
+        case 'pie': return '5'; // xlPie
+        case 'area': return '1'; // xlArea
+        case 'column':
+        default:
+            return '51'; // xlColumnClustered
+    }
+}
+export function buildExcelPivotTableScript(pid, params) {
+    const sheet = escapePs(params?.sheet || '');
+    const sourceRange = escapePs(params?.sourceRange || params?.cellRange || 'A1:D10');
+    const destinationSheet = escapePs(params?.destinationSheet || sheet || 'Sheet1');
+    const destinationCell = escapePs(params?.destinationCell || 'F3');
+    const dataField = escapePs(params?.dataField || 'Value');
+    const rowFields = (params?.rowFields || []).map(escapePs);
+    const columnFields = (params?.columnFields || []).map(escapePs);
+    const aggregation = normalizeAggregation(params?.aggregation);
+    return `
+$ErrorActionPreference = 'Stop'
+try {
+  $xl = [Runtime.Interopservices.Marshal]::GetActiveObject('Excel.Application')
+  $wb = $xl.ActiveWorkbook
+  if (-not $wb) { throw 'No active workbook' }
+  $sourceSheet = if ('${sheet}') { $wb.Sheets.Item('${sheet}') } else { $xl.ActiveSheet }
+  $targetSheet = $wb.Sheets.Item('${destinationSheet}')
+  $source = $sourceSheet.Range('${sourceRange}')
+  $cache = $wb.PivotCaches().Create(1, $source)
+  $pivot = $cache.CreatePivotTable($targetSheet.Range('${destinationCell}'), 'UABPivotTable')
+  ${rowFields.map((field, index) => `$pivot.PivotFields('${field}').Orientation = 1; $pivot.PivotFields('${field}').Position = ${index + 1}`).join("\n  ")}
+  ${columnFields.map((field, index) => `$pivot.PivotFields('${field}').Orientation = 2; $pivot.PivotFields('${field}').Position = ${index + 1}`).join("\n  ")}
+  $null = $pivot.AddDataField($pivot.PivotFields('${dataField}'), 'Sum of ${dataField}', ${aggregation})
+  @{ success = $true; destinationSheet = $targetSheet.Name; destinationCell = '${destinationCell}'; rowFieldCount = ${rowFields.length}; columnFieldCount = ${columnFields.length} } | ConvertTo-Json -Compress
+} catch {
+  @{ success = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+`;
+}
+export function buildExcelChartScript(pid, params) {
+    const sheet = escapePs(params?.sheet || '');
+    const sourceRange = escapePs(params?.sourceRange || params?.cellRange || 'A1:B10');
+    const chartType = normalizeChartType(params?.chartType);
+    const title = escapePs(params?.chartTitle || 'UAB Chart');
+    return `
+$ErrorActionPreference = 'Stop'
+try {
+  $xl = [Runtime.Interopservices.Marshal]::GetActiveObject('Excel.Application')
+  $wb = $xl.ActiveWorkbook
+  if (-not $wb) { throw 'No active workbook' }
+  $ws = if ('${sheet}') { $wb.Sheets.Item('${sheet}') } else { $xl.ActiveSheet }
+  $source = $ws.Range('${sourceRange}')
+  $chartObject = $ws.ChartObjects().Add(240, 20, 420, 260)
+  $chart = $chartObject.Chart
+  $chart.SetSourceData($source)
+  $chart.ChartType = ${chartType}
+  $chart.HasTitle = $true
+  $chart.ChartTitle.Text = '${title}'
+  @{ success = $true; sheet = $ws.Name; sourceRange = '${sourceRange}'; chartTitle = '${title}' } | ConvertTo-Json -Compress
+} catch {
+  @{ success = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+`;
+}
+export function buildExcelConditionalFormattingScript(pid, params) {
+    const sheet = escapePs(params?.sheet || '');
+    const targetRange = escapePs(params?.targetRange || params?.cellRange || 'A1:A10');
+    const formatType = params?.formatType || 'colorScale';
+    const formatScript = formatType === 'dataBar'
+        ? '$null = $rng.FormatConditions.AddDatabar()'
+        : formatType === 'iconSet'
+            ? '$null = $rng.FormatConditions.AddIconSetCondition()'
+            : '$null = $rng.FormatConditions.AddColorScale(3)';
+    return `
+$ErrorActionPreference = 'Stop'
+try {
+  $xl = [Runtime.Interopservices.Marshal]::GetActiveObject('Excel.Application')
+  $wb = $xl.ActiveWorkbook
+  if (-not $wb) { throw 'No active workbook' }
+  $ws = if ('${sheet}') { $wb.Sheets.Item('${sheet}') } else { $xl.ActiveSheet }
+  $rng = $ws.Range('${targetRange}')
+  $rng.FormatConditions.Delete()
+  ${formatScript}
+  @{ success = $true; sheet = $ws.Name; targetRange = '${targetRange}'; formatType = '${formatType}' } | ConvertTo-Json -Compress
+} catch {
+  @{ success = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+`;
+}
 // ─── Office Plugin ─────────────────────────────────────────
 export class OfficePlugin {
     framework = 'office';
     name = 'Microsoft Office (UIA + Office Patterns)';
+    controlMethod = 'office-com+uia';
     uiaPlugin = new WinUIAPlugin();
     canHandle(app) {
         return app.framework === 'office';
@@ -85,6 +190,12 @@ class OfficeConnection {
                 return this.comGetSheets();
             case 'readFormula':
                 return this.comReadFormula(params);
+            case 'createPivotTable':
+                return this.comCreatePivotTable(params);
+            case 'createChart':
+                return this.comCreateChart(params);
+            case 'applyConditionalFormatting':
+                return this.comApplyConditionalFormatting(params);
             // Outlook COM actions
             case 'readEmails':
                 return this.comReadEmails(params);
@@ -152,7 +263,7 @@ class OfficeConnection {
                 actions.push('readCell', 'writeCell');
             }
             // COM-based Excel actions available at any element level
-            actions.push('readRange', 'writeRange', 'getSheets', 'readFormula');
+            actions.push('readRange', 'writeRange', 'getSheets', 'readFormula', 'createPivotTable', 'createChart', 'applyConditionalFormatting');
         }
         if (this.officeType === 'outlook') {
             actions.push('readEmails', 'composeEmail', 'sendEmail');
@@ -562,6 +673,42 @@ try {
         }
     }
     // ─── Outlook COM: Read Emails ────────────────────────────
+    async comCreatePivotTable(params) {
+        if (this.officeType !== 'excel') {
+            return { success: false, error: `createPivotTable is only supported for Excel (current: ${this.officeType})` };
+        }
+        try {
+            const result = runPSJsonInteractive(buildExcelPivotTableScript(this.app.pid, params), 20000);
+            return { success: result.success, result, error: result.error };
+        }
+        catch (err) {
+            return { success: false, error: `COM createPivotTable failed: ${err}` };
+        }
+    }
+    async comCreateChart(params) {
+        if (this.officeType !== 'excel') {
+            return { success: false, error: `createChart is only supported for Excel (current: ${this.officeType})` };
+        }
+        try {
+            const result = runPSJsonInteractive(buildExcelChartScript(this.app.pid, params), 20000);
+            return { success: result.success, result, error: result.error };
+        }
+        catch (err) {
+            return { success: false, error: `COM createChart failed: ${err}` };
+        }
+    }
+    async comApplyConditionalFormatting(params) {
+        if (this.officeType !== 'excel') {
+            return { success: false, error: `applyConditionalFormatting is only supported for Excel (current: ${this.officeType})` };
+        }
+        try {
+            const result = runPSJsonInteractive(buildExcelConditionalFormattingScript(this.app.pid, params), 20000);
+            return { success: result.success, result, error: result.error };
+        }
+        catch (err) {
+            return { success: false, error: `COM applyConditionalFormatting failed: ${err}` };
+        }
+    }
     async comReadEmails(params) {
         if (this.officeType !== 'outlook') {
             return { success: false, error: `readEmails is only supported for Outlook (current: ${this.officeType})` };

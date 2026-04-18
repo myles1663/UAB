@@ -17,6 +17,7 @@ import { WinUIAPlugin } from '../win-uia/index.js';
 export class FlutterPlugin {
     framework = 'flutter';
     name = 'Flutter (UIA Bridge)';
+    controlMethod = 'flutter-uia';
     uiaPlugin = new WinUIAPlugin();
     canHandle(app) {
         return app.framework === 'flutter';

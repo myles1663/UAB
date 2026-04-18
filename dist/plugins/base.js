@@ -4,6 +4,7 @@
  * Manages framework plugin registration and routing.
  * Supports multiple plugins and selects the best one via canHandle().
  */
+import { describeControlMethod } from '../hooks.js';
 export class PluginManager {
     plugins = [];
     connections = new Map();
@@ -21,6 +22,18 @@ export class PluginManager {
         const types = new Set(this.plugins.map(p => p.framework));
         return Array.from(types);
     }
+    getHookInventory() {
+        const seen = new Set();
+        const inventory = [];
+        for (const plugin of this.plugins) {
+            const descriptor = describeControlMethod(plugin.controlMethod);
+            if (!descriptor || seen.has(descriptor.id))
+                continue;
+            seen.add(descriptor.id);
+            inventory.push(descriptor);
+        }
+        return inventory;
+    }
     /**
      * Check if any plugin can handle the given framework.
      */
@@ -31,6 +44,11 @@ export class PluginManager {
      * Find the best plugin for an app by trying each in order.
      */
     findPlugin(app) {
+        for (const plugin of this.plugins) {
+            if (plugin.controlMethod === 'direct-api' && plugin.canHandle(app)) {
+                return plugin;
+            }
+        }
         // First try exact framework match
         for (const plugin of this.plugins) {
             if (plugin.framework === app.framework && plugin.canHandle(app)) {
@@ -44,6 +62,28 @@ export class PluginManager {
             }
         }
         return null;
+    }
+    getCandidatePlugins(app) {
+        const matches = [];
+        for (const plugin of this.plugins) {
+            if (plugin.controlMethod === 'direct-api' && plugin.canHandle(app)) {
+                matches.push(plugin);
+            }
+        }
+        for (const plugin of this.plugins) {
+            if (!matches.includes(plugin) && plugin.framework === app.framework && plugin.canHandle(app)) {
+                matches.push(plugin);
+            }
+        }
+        for (const plugin of this.plugins) {
+            if (!matches.includes(plugin) && plugin.canHandle(app)) {
+                matches.push(plugin);
+            }
+        }
+        return matches;
+    }
+    findPluginByMethod(app, method) {
+        return this.getCandidatePlugins(app).find(plugin => plugin.controlMethod === method) || null;
     }
     /**
      * Connect to an app using the best available plugin.

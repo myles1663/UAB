@@ -11,6 +11,7 @@ import type { FrameworkPlugin, PluginConnection, DetectedApp } from '../../types
 export declare class ElectronPlugin implements FrameworkPlugin {
     readonly framework: "electron";
     readonly name = "Electron (CDP)";
+    readonly controlMethod: "electron-cdp";
     canHandle(app: DetectedApp): boolean;
     connect(app: DetectedApp): Promise<PluginConnection>;
     /**

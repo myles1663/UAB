@@ -177,7 +177,7 @@ Output:
   "pid": 12340,
   "name": "notepad",
   "framework": "unknown",
-  "method": "accessibility",
+  "method": "win-uia",
   "elementCount": 15
 }
 ```
@@ -186,8 +186,8 @@ Output:
 1. Registry lookup for "notepad" → found profile
 2. Plugin cascade: tried each plugin in order
 3. No framework-specific plugin matched (framework: "unknown")
-4. Win-UIA fallback succeeded → `method: "accessibility"`
-5. Registry updated with `preferredMethod: "accessibility"` → **learning!**
+4. Win-UIA fallback succeeded → `method: "win-uia"`
+5. Registry updated with `preferredMethod: "win-uia"` → **learning!**
 6. Element tree enumerated → 15 elements found
 
 ### Step 7: Explore the UI Tree

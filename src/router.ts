@@ -3,9 +3,9 @@
  *
  * Selects the best available control method for each app:
  *   Priority 1: Direct API / MCP Server (if available)
- *   Priority 2: UAB Framework Hook (this project)
- *   Priority 3: Accessibility API (OS-native)
- *   Priority 4: Vision + Input Injection (universal fallback)
+ *   Priority 2: Framework-specific UAB hook
+ *   Priority 3: WinUIA accessibility fallback
+ *   Priority 4: Vision + input injection fallback
  */
 
 import type {
@@ -20,13 +20,15 @@ import { VisionPlugin } from './plugins/vision/index.js';
 export class ControlRouter {
   private pluginManager: PluginManager;
   private routes: Map<number, ControlRoute> = new Map();
+  private uiaFallback = new WinUIAPlugin();
+  private visionFallback = new VisionPlugin();
 
   constructor(pluginManager: PluginManager) {
     this.pluginManager = pluginManager;
   }
 
   async connect(app: DetectedApp): Promise<RoutedConnection> {
-    const methods = this.getAvailableMethods(app);
+    const methods = this.describeAvailableMethods(app);
     let lastError: Error | null = null;
 
     for (const method of methods) {
@@ -34,7 +36,9 @@ export class ControlRouter {
         const connection = await this.tryMethod(app, method);
         if (connection) {
           const route: ControlRoute = {
-            app, method, connection,
+            app,
+            method,
+            connection,
             fallbacks: methods.filter(m => m !== method),
           };
           this.routes.set(app.pid, route);
@@ -50,6 +54,26 @@ export class ControlRouter {
       `Tried methods: ${methods.join(', ')}. ` +
       `Last error: ${lastError?.message || 'unknown'}`
     );
+  }
+
+  describeAvailableMethods(app: DetectedApp): ControlMethod[] {
+    const methods: ControlMethod[] = [];
+
+    for (const plugin of this.pluginManager.getCandidatePlugins(app)) {
+      if (!methods.includes(plugin.controlMethod)) {
+        methods.push(plugin.controlMethod);
+      }
+    }
+
+    if (!methods.includes(this.uiaFallback.controlMethod) && this.uiaFallback.canHandle(app)) {
+      methods.push(this.uiaFallback.controlMethod);
+    }
+
+    if (!methods.includes(this.visionFallback.controlMethod) && this.visionFallback.canHandle(app)) {
+      methods.push(this.visionFallback.controlMethod);
+    }
+
+    return methods;
   }
 
   getRoute(pid: number): ControlRoute | undefined {
@@ -81,7 +105,9 @@ export class ControlRouter {
         const connection = await this.tryMethod(route.app, method);
         if (connection) {
           const newRoute: ControlRoute = {
-            app: route.app, method, connection,
+            app: route.app,
+            method,
+            connection,
             fallbacks: route.fallbacks.filter(m => m !== method),
           };
           this.routes.set(pid, newRoute);
@@ -94,40 +120,33 @@ export class ControlRouter {
     return null;
   }
 
-  private getAvailableMethods(app: DetectedApp): ControlMethod[] {
-    const methods: ControlMethod[] = [];
-    if (this.pluginManager.hasPlugin(app.framework)) {
-      methods.push('uab-hook');
-    }
-    methods.push('accessibility');
-    // Vision is always last — expensive but universal
-    if (this.visionFallback.canHandle(app)) {
-      methods.push('vision');
-    }
-    return methods;
-  }
-
-  private uiaFallback = new WinUIAPlugin();
-  private visionFallback = new VisionPlugin();
-
   private async tryMethod(app: DetectedApp, method: ControlMethod): Promise<PluginConnection | null> {
     switch (method) {
-      case 'uab-hook':
-        return this.pluginManager.connect(app);
-      case 'accessibility':
-        // Use Windows UI Automation as the accessibility fallback
+      case 'direct-api':
+      case 'chrome-extension':
+      case 'browser-cdp':
+      case 'electron-cdp':
+      case 'office-com+uia':
+      case 'qt-uia':
+      case 'gtk-uia':
+      case 'java-jab-uia':
+      case 'flutter-uia': {
+        const plugin = this.pluginManager.findPluginByMethod(app, method);
+        if (!plugin) {
+          throw new Error(`Framework hook ${method} is not available for ${app.name}`);
+        }
+        return plugin.connect(app);
+      }
+      case 'win-uia':
         if (this.uiaFallback.canHandle(app)) {
           return this.uiaFallback.connect(app);
         }
-        throw new Error('Accessibility API fallback not available for this app');
+        throw new Error('WinUIA fallback not available for this app');
       case 'vision':
-        // Vision fallback — screenshot + Claude Vision API + coordinate input
         if (this.visionFallback.canHandle(app)) {
           return this.visionFallback.connect(app);
         }
         throw new Error('Vision fallback requires ANTHROPIC_API_KEY');
-      case 'direct-api':
-        throw new Error('Direct API method not yet implemented');
       default:
         throw new Error(`Unknown control method: ${method}`);
     }
@@ -174,7 +193,6 @@ export class RoutedConnection implements PluginConnection {
   private async withActionFallback(elementId: string, action: ActionType, params?: ActionParams): Promise<ActionResult> {
     try {
       const result = await this.route.connection.act(elementId, action, params);
-      // If the action failed and there are fallbacks, try the next method
       if (!result.success && result.error && this.route.fallbacks.length > 0) {
         const fallbackConn = await this.router.fallback(this.route.app.pid);
         if (fallbackConn) {

@@ -6,6 +6,8 @@
 
 UAB doesn't just automate apps — it **discovers**, **identifies**, **learns**, and **remembers** how to control every application on your system. The first time it sees an app, it figures out what framework it uses, which control method works best, and stores that knowledge for instant recall. Every subsequent interaction is faster and smarter.
 
+The runtime also exposes its discovery model directly. Embedding systems can inspect the registered framework hooks, framework-detection signatures, Concerto method inventory, and per-operation control plans instead of treating UAB as a black box.
+
 ## One-Click Install
 
 UAB ships as a packaged installer. Run it once and every AI agent on the machine gets native desktop control.
@@ -91,7 +93,7 @@ const excel = await uab.find('excel');
 
 // 3. CONNECT — Best method selected automatically
 const conn = await uab.connect('excel');
-// → { pid: 5678, name: 'EXCEL', framework: 'office', method: 'com+uia', elementCount: 342 }
+// → { pid: 5678, name: 'EXCEL', framework: 'office', method: 'office-com+uia', elementCount: 342 }
 
 // 4. QUERY — Search the UI tree
 const buttons = await uab.query(conn.pid, { type: 'button', label: 'Save' });
@@ -121,7 +123,7 @@ uab find "notepad"
 
 # Connect with automatic method selection
 uab connect notepad
-# → { "pid": 1234, "method": "accessibility", "elementCount": 15 }
+# → { "pid": 1234, "method": "win-uia", "elementCount": 15 }
 
 # Query and act
 uab query 1234 --type button --label "Save"
@@ -154,6 +156,7 @@ curl -X POST http://localhost:3100/find -d '{"query":"notepad"}'
 curl -X POST http://localhost:3100/connect -d '{"target":"notepad"}'
 curl -X POST http://localhost:3100/query -d '{"pid":1234,"selector":{"type":"button"}}'
 curl -X POST http://localhost:3100/act -d '{"pid":1234,"elementId":"btn_1","action":"click"}'
+curl -X POST http://localhost:3100/plan -d '{"pid":1234,"action":"hotkey"}'
 curl -X POST http://localhost:3100/open -d '{"target":"notepad"}'
 curl -X POST http://localhost:3100/focus -d '{"pid":1234}'
 curl -X POST http://localhost:3100/describe -d '{"pid":1234}'
@@ -249,16 +252,17 @@ Agent Runtime (Claude / GPT / Any AI Agent)
 
 ### The Cascade Pattern
 
-UAB picks the best control method for each operation automatically. It's a concerto — each micro-operation uses the most efficient method based on speed, outcome quality, control precision, and cost:
+UAB picks the best control method for each operation automatically. The standalone runtime now exposes this through a Concerto inventory plus per-operation planning. Each micro-operation uses the most efficient method based on speed, outcome quality, control precision, and cost:
 
 ```
-Priority 1: Chrome Extension Bridge (browsers — no relaunch needed)
-Priority 2: CDP Browser Plugin (browsers — with debug flag)
-Priority 3: Framework Hook (Electron CDP, Office COM)
-Priority 4: Windows UI Automation (accessibility fallback — any windowed app)
-Priority 5: Keyboard Native (shortcuts, hotkeys, text input — fastest for commands)
-Priority 6: OS Raw Input Injection (drag, scroll, gestures — SendInput/CGEventPost/xdotool)
-     Vision: Screenshot + AI (reading state, verifying results — the agent's eyes)
+Priority 1: Direct API / MCP endpoint (when the app exposes one)
+Priority 2: Chrome Extension Bridge (browsers — no relaunch needed)
+Priority 3: Browser CDP (browsers — with debug flag)
+Priority 4: Framework Hook (Electron CDP, Office COM, Qt/GTK/Java/Flutter hook wrappers)
+Priority 5: Windows UI Automation (win-uia fallback — any windowed app)
+Priority 6: Keyboard Native (shortcuts, hotkeys, text input — fastest for commands)
+Priority 7: OS Raw Input Injection (drag, scroll, gestures — SendInput/CGEventPost/xdotool)
+     Vision Analysis: Screenshot + AI (reading state, verifying results — the agent's eyes)
 ```
 
 The cascade isn't "pick one method per app" — it's "pick the right method for each operation." A single Blender sculpting session uses keyboard for commands (Ctrl+Tab, Ctrl+4), drag for brush strokes, scroll for zooming, and screenshots for verification. Five methods in one workflow. That's the concerto.
@@ -266,6 +270,12 @@ The cascade isn't "pick one method per app" — it's "pick the right method for 
 > **P6 — OS Raw Input Injection** injects mouse drag, scroll, and gesture events directly into the OS input stream via `SendInput()`. Any application receives these exactly as if a human moved the mouse. This enables sculpting in Blender, painting in Photoshop, drawing in any canvas app — operations that require continuous held-button mouse movement.
 
 ## Smart Discovery Deep Dive
+
+The standalone runtime now exposes this contract directly:
+- `hookInventory()` / `GET /info.frameworkHooks` — all registered framework hooks
+- `signatureInventory()` / `GET /info.frameworkSignatures` — framework detection signatures
+- `concertoInventory()` / `GET /info.concertoMethods` — operation-level method inventory
+- `planOperation()` / `POST /plan` — per-operation Concerto planning
 
 ### Phase 1: Detection
 
@@ -310,7 +320,7 @@ interface AppProfile {
   pid: number;              // Last known PID
   framework: FrameworkType; // "electron"
   confidence: number;       // 0.95
-  preferredMethod: string;  // "cdp" (learned from successful connection)
+  preferredMethod: string;  // "browser-cdp", "office-com+uia", "win-uia", etc.
   path: string;             // Full executable path
   windowTitle: string;      // "project - Visual Studio Code"
   lastSeen: number;         // Unix timestamp
@@ -341,7 +351,7 @@ After each successful connection, UAB updates the registry with what worked:
 ```typescript
 // After connecting to VS Code via CDP:
 registry.update('code.exe', {
-  preferredMethod: 'cdp',    // Remember: CDP works for this app
+  preferredMethod: 'browser-cdp',  // Remember the exact working method
   pid: 12345,                // Update last known PID
   lastSeen: Date.now()       // Update timestamp
 });
@@ -353,16 +363,16 @@ Next time you connect to VS Code, UAB tries CDP first because it learned that's 
 
 | Framework | Plugin | Method | Apps Covered |
 |-----------|--------|--------|-------------|
-| **Chrome/Edge/Brave** | Extension Bridge | WebSocket | Any Chromium browser — tabs, cookies, DOM, storage, JS exec |
-| **Chrome/Edge/Brave** | CDP Fallback | CDP | Same browsers, requires `--remote-debugging-port` |
-| **Electron** | Chrome DevTools Protocol | CDP | VS Code, Slack, Discord, Notion, Obsidian, Spotify, Teams |
-| **MS Office** | COM Automation + UIA | COM+UIA | Word, Excel, PowerPoint, Outlook |
-| **Qt 5/6** | UIA Bridge | UIA | VLC, Telegram Desktop, OBS Studio, VirtualBox, Wireshark |
-| **GTK 3/4** | UIA Bridge | UIA | GIMP, Inkscape, GNOME apps |
-| **WPF/.NET** | Windows UI Automation | UIA | Windows enterprise apps, Visual Studio |
-| **Flutter** | UIA Bridge | UIA | Google apps, Ubuntu desktop apps |
-| **Java Swing/FX** | JAB→UIA Bridge | UIA | JetBrains IDEs, Android Studio |
-| **Win32** | Windows UI Automation | UIA | Universal fallback for any Windows app |
+| **Direct API apps** | DirectApiPlugin | HTTP/JSON | Apps that expose a local control endpoint |
+| **Chrome/Edge/Brave** | ChromeExtPlugin | `chrome-extension` | Any Chromium browser — tabs, cookies, DOM, storage, JS exec |
+| **Chrome/Edge/Brave** | BrowserPlugin | `browser-cdp` | Same browsers, requires `--remote-debugging-port` |
+| **Electron** | ElectronPlugin | `electron-cdp` | VS Code, Slack, Discord, Notion, Obsidian, Spotify, Teams |
+| **MS Office** | OfficePlugin | `office-com+uia` | Word, Excel, PowerPoint, Outlook |
+| **Qt 5/6** | QtPlugin | `qt-uia` | VLC, Telegram Desktop, OBS Studio, VirtualBox, Wireshark |
+| **GTK 3/4** | GtkPlugin | `gtk-uia` | GIMP, Inkscape, GNOME apps |
+| **WPF/.NET / Win32** | WinUIAPlugin | `win-uia` | Windows enterprise apps, Visual Studio, generic fallback |
+| **Flutter** | FlutterPlugin | `flutter-uia` | Google apps, Ubuntu desktop apps |
+| **Java Swing/FX** | JavaPlugin | `java-jab-uia` | JetBrains IDEs, Android Studio |
 
 ## Unified API
 

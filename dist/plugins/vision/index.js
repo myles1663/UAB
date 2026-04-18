@@ -23,6 +23,7 @@ import { clickAt, doubleClickAt, rightClickAt, hoverAt, dragPath, typeTextAt, se
 // ─── Plugin ──────────────────────────────────────────────────
 export class VisionPlugin {
     framework = 'unknown';
+    controlMethod = 'vision';
     name = 'Vision (Screenshot + Coordinates)';
     analyzerOptions;
     constructor(options) {

@@ -19,6 +19,7 @@ import { FrameworkPlugin, PluginConnection, DetectedApp } from '../../types.js';
 export declare class QtPlugin implements FrameworkPlugin {
     readonly framework: "qt6";
     readonly name = "Qt (UIA Bridge)";
+    readonly controlMethod: "qt-uia";
     private uiaPlugin;
     canHandle(app: DetectedApp): boolean;
     connect(app: DetectedApp): Promise<PluginConnection>;

@@ -18,6 +18,7 @@ import type { FrameworkPlugin, PluginConnection, DetectedApp } from '../../types
 export declare class BrowserPlugin implements FrameworkPlugin {
     readonly framework: "browser";
     readonly name = "Browser (CDP)";
+    readonly controlMethod: "browser-cdp";
     canHandle(app: DetectedApp): boolean;
     connect(app: DetectedApp): Promise<PluginConnection>;
 }

@@ -85,6 +85,10 @@ export class UABServer {
         return this.server?.listening ?? false;
     }
     get address() {
+        const bound = this.server?.address();
+        if (bound && typeof bound === 'object') {
+            return `http://${bound.address}:${bound.port}`;
+        }
         return `http://${this.opts.host}:${this.opts.port}`;
     }
     // ─── Request Handling ───────────────────────────────────────
@@ -176,11 +180,17 @@ export class UABServer {
         }
         // GET /info is public (agents need to discover endpoints)
         if (req.method === 'GET' && path === '/info') {
+            const hooks = this.connector.hookInventory();
+            const signatures = this.connector.signatureInventory();
+            const concerto = this.connector.concertoInventory();
             this.sendJSON(res, 200, {
                 name: 'Universal App Bridge Server',
                 version: '1.0.0',
                 environment: this.environment,
                 endpoints: [...this.routes.keys()].map(r => `POST ${r}`),
+                frameworkHooks: hooks,
+                frameworkSignatures: signatures,
+                concertoMethods: concerto,
             });
             return;
         }
@@ -355,6 +365,15 @@ export class UABServer {
                 })),
             };
         });
+        this.routes.set('/plan', async (body, conn) => {
+            const pid = body.pid;
+            const action = body.action;
+            if (!pid || !action)
+                throw new Error('Missing required fields: pid, action');
+            if (!conn.isConnected(pid))
+                await conn.connect(pid);
+            return { pid, action, plan: conn.planOperation(pid, action) };
+        });
         this.routes.set('/act', async (body, conn) => {
             const pid = body.pid;
             const elementId = body.elementId || '';
@@ -417,8 +436,9 @@ export class UABServer {
             if (!path || !Array.isArray(path) || path.length < 2) {
                 throw new Error('Missing required field: path (array of {x,y} with at least 2 points)');
             }
-            const { dragPath } = await import('./plugins/vision/input.js');
-            const result = dragPath(pid, path, stepDelay, button);
+            if (!this.connector.isConnected(pid))
+                await this.connector.connect(pid);
+            const result = await this.connector.drag(pid, path, stepDelay, button);
             return { pid, ...result };
         });
         // P6 — OS raw input injection: scroll at coordinates
@@ -430,8 +450,9 @@ export class UABServer {
             if (!pid || x === undefined || y === undefined || amount === undefined) {
                 throw new Error('Missing required fields: pid, x, y, amount');
             }
-            const { scrollAt } = await import('./plugins/vision/input.js');
-            const result = scrollAt(pid, x, y, amount);
+            if (!this.connector.isConnected(pid))
+                await this.connector.connect(pid);
+            const result = await this.connector.scroll(pid, x, y, amount);
             return { pid, ...result };
         });
         this.routes.set('/screenshot', async (body, conn) => {

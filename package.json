@@ -28,6 +28,10 @@
     "./environment": {
       "types": "./dist/environment.d.ts",
       "import": "./dist/environment.js"
+    },
+    "./hooks": {
+      "types": "./dist/hooks.d.ts",
+      "import": "./dist/hooks.js"
     }
   },
   "files": [
@@ -38,6 +42,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.js",
+    "test": "npm run build && node --test tests/*.test.mjs",
     "pack-extension": "node scripts/pack-extension.js",
     "test-install": "node scripts/test-install.js",
     "prepublishOnly": "npm run build"

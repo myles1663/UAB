@@ -141,7 +141,7 @@ interface ConnectionInfo {
   pid: number;        // Process ID
   name: string;       // App name
   framework: string;  // Detected framework
-  method: string;     // Control method used ('cdp', 'com+uia', 'accessibility')
+  method: string;     // Control method used ('browser-cdp', 'office-com+uia', 'win-uia', 'direct-api', ...)
   elementCount: number; // Total UI elements found
 }
 ```
@@ -381,7 +381,7 @@ Update specific fields of an existing profile.
 
 ```typescript
 registry.update('code.exe', {
-  preferredMethod: 'cdp',
+  preferredMethod: 'browser-cdp',
   pid: 12345,
   lastSeen: Date.now()
 });
@@ -475,7 +475,18 @@ type FrameworkType =
 ### ControlMethod
 
 ```typescript
-type ControlMethod = 'direct-api' | 'uab-hook' | 'accessibility' | 'vision';
+type ControlMethod =
+  | 'chrome-extension'
+  | 'browser-cdp'
+  | 'electron-cdp'
+  | 'office-com+uia'
+  | 'qt-uia'
+  | 'gtk-uia'
+  | 'java-jab-uia'
+  | 'flutter-uia'
+  | 'win-uia'
+  | 'direct-api'
+  | 'vision';
 ```
 
 ### ElementType (32 types)

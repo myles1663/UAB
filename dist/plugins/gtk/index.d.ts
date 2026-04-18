@@ -18,6 +18,7 @@ import { FrameworkPlugin, PluginConnection, DetectedApp } from '../../types.js';
 export declare class GtkPlugin implements FrameworkPlugin {
     readonly framework: "gtk4";
     readonly name = "GTK (UIA Bridge)";
+    readonly controlMethod: "gtk-uia";
     private uiaPlugin;
     canHandle(app: DetectedApp): boolean;
     connect(app: DetectedApp): Promise<PluginConnection>;

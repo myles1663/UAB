@@ -2,6 +2,18 @@
 
 All notable changes to Universal App Bridge will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- First-class framework hook inventory via `src/hooks.ts`, plus public connector and server exposure through `hookInventory()`, `signatureInventory()`, `concertoInventory()`, and `/info`.
+- Real `direct-api` plugin support and explicit operation planning via `src/concerto.ts` and the `/plan` endpoint.
+- Proof tests for hook inventory, detection signatures, router fallback behavior, connector/server inventories, direct API control, Concerto planning, and Office capability claims.
+
+### Changed
+- Router and plugin-manager selection now prioritize exact runtime control methods instead of generic `uab-hook` and `accessibility` labels.
+- Office automation now includes explicit script builders and action support for pivot tables, charts, and conditional formatting.
+- Product docs now describe the exact runtime control methods and discovery surfaces exposed by the standalone engine.
+
 ## v1.3.0 — The Concerto (P6 Raw Input Injection)
 
 ### Added

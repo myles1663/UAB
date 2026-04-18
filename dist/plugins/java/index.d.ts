@@ -18,6 +18,7 @@ import { FrameworkPlugin, PluginConnection, DetectedApp } from '../../types.js';
 export declare class JavaPlugin implements FrameworkPlugin {
     readonly framework: "java-swing";
     readonly name = "Java (UIA via JAB)";
+    readonly controlMethod: "java-jab-uia";
     private uiaPlugin;
     canHandle(app: DetectedApp): boolean;
     connect(app: DetectedApp): Promise<PluginConnection>;

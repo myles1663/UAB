@@ -65,6 +65,7 @@ if ($windows) {
 export class QtPlugin {
     framework = 'qt6';
     name = 'Qt (UIA Bridge)';
+    controlMethod = 'qt-uia';
     uiaPlugin = new WinUIAPlugin();
     canHandle(app) {
         return app.framework === 'qt5' || app.framework === 'qt6';

@@ -69,13 +69,14 @@ function getSessionId(): number {
 
 function detectContainer(): boolean {
   // Check common container indicators
-  try {
-    // Docker
-    const cgroup = execSync('cat /proc/1/cgroup 2>/dev/null || echo ""', {
-      encoding: 'utf-8', timeout: 2000
-    });
-    if (cgroup.includes('docker') || cgroup.includes('containerd')) return true;
-  } catch { /* not Linux or no cgroup */ }
+  if (process.platform !== 'win32') {
+    try {
+      const cgroup = execSync('cat /proc/1/cgroup 2>/dev/null || echo ""', {
+        encoding: 'utf-8', timeout: 2000
+      });
+      if (cgroup.includes('docker') || cgroup.includes('containerd')) return true;
+    } catch { /* not Linux or no cgroup */ }
+  }
 
   // Check WSL
   if (process.env.WSL_DISTRO_NAME) return true;

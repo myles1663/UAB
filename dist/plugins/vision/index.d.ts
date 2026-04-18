@@ -22,6 +22,7 @@ import type { FrameworkPlugin, PluginConnection, DetectedApp } from '../../types
 import { type VisionAnalyzerOptions } from './analyzer.js';
 export declare class VisionPlugin implements FrameworkPlugin {
     readonly framework: "unknown";
+    readonly controlMethod: "vision";
     readonly name = "Vision (Screenshot + Coordinates)";
     private analyzerOptions?;
     constructor(options?: VisionAnalyzerOptions);

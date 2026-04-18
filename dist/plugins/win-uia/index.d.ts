@@ -18,6 +18,7 @@
 import { FrameworkPlugin, PluginConnection, DetectedApp } from '../../types.js';
 export declare class WinUIAPlugin implements FrameworkPlugin {
     readonly framework: "wpf";
+    readonly controlMethod: "win-uia";
     readonly name = "Windows UI Automation";
     canHandle(app: DetectedApp): boolean;
     connect(app: DetectedApp): Promise<PluginConnection>;

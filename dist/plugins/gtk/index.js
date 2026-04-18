@@ -19,6 +19,7 @@ import { WinUIAPlugin } from '../win-uia/index.js';
 export class GtkPlugin {
     framework = 'gtk4';
     name = 'GTK (UIA Bridge)';
+    controlMethod = 'gtk-uia';
     uiaPlugin = new WinUIAPlugin();
     canHandle(app) {
         return app.framework === 'gtk3' || app.framework === 'gtk4';

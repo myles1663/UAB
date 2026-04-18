@@ -26,7 +26,7 @@ export interface Bounds {
     height: number;
 }
 export type ElementType = 'window' | 'button' | 'textfield' | 'textarea' | 'checkbox' | 'radio' | 'select' | 'menu' | 'menuitem' | 'list' | 'listitem' | 'table' | 'tablerow' | 'tablecell' | 'tab' | 'tabpanel' | 'tree' | 'treeitem' | 'slider' | 'progressbar' | 'scrollbar' | 'toolbar' | 'statusbar' | 'dialog' | 'tooltip' | 'image' | 'link' | 'label' | 'heading' | 'separator' | 'container' | 'unknown';
-export type ActionType = 'click' | 'doubleclick' | 'rightclick' | 'drag' | 'type' | 'clear' | 'select' | 'scroll' | 'focus' | 'hover' | 'expand' | 'collapse' | 'invoke' | 'check' | 'uncheck' | 'toggle' | 'keypress' | 'hotkey' | 'minimize' | 'maximize' | 'restore' | 'close' | 'move' | 'resize' | 'screenshot' | 'contextmenu' | 'readDocument' | 'readCell' | 'writeCell' | 'readRange' | 'writeRange' | 'getSheets' | 'readFormula' | 'readSlides' | 'readSlideText' | 'readEmails' | 'composeEmail' | 'sendEmail' | 'getCookies' | 'setCookie' | 'deleteCookie' | 'clearCookies' | 'getLocalStorage' | 'setLocalStorage' | 'deleteLocalStorage' | 'clearLocalStorage' | 'getSessionStorage' | 'setSessionStorage' | 'deleteSessionStorage' | 'clearSessionStorage' | 'navigate' | 'goBack' | 'goForward' | 'reload' | 'getTabs' | 'switchTab' | 'closeTab' | 'newTab' | 'executeScript';
+export type ActionType = 'click' | 'doubleclick' | 'rightclick' | 'drag' | 'type' | 'clear' | 'select' | 'scroll' | 'focus' | 'hover' | 'expand' | 'collapse' | 'invoke' | 'check' | 'uncheck' | 'toggle' | 'keypress' | 'hotkey' | 'minimize' | 'maximize' | 'restore' | 'close' | 'move' | 'resize' | 'screenshot' | 'contextmenu' | 'readDocument' | 'readCell' | 'writeCell' | 'readRange' | 'writeRange' | 'getSheets' | 'readFormula' | 'createPivotTable' | 'createChart' | 'applyConditionalFormatting' | 'readSlides' | 'readSlideText' | 'readEmails' | 'composeEmail' | 'sendEmail' | 'getCookies' | 'setCookie' | 'deleteCookie' | 'clearCookies' | 'getLocalStorage' | 'setLocalStorage' | 'deleteLocalStorage' | 'clearLocalStorage' | 'getSessionStorage' | 'setSessionStorage' | 'deleteSessionStorage' | 'clearSessionStorage' | 'navigate' | 'goBack' | 'goForward' | 'reload' | 'getTabs' | 'switchTab' | 'closeTab' | 'newTab' | 'executeScript';
 export interface ElementSelector {
     type?: ElementType;
     label?: string;
@@ -59,6 +59,17 @@ export interface ActionParams {
     cellRange?: string;
     formula?: string;
     values?: string[][];
+    sourceRange?: string;
+    destinationSheet?: string;
+    destinationCell?: string;
+    rowFields?: string[];
+    columnFields?: string[];
+    dataField?: string;
+    aggregation?: 'sum' | 'count' | 'average' | 'min' | 'max';
+    chartType?: 'bar' | 'line' | 'pie' | 'column' | 'area';
+    chartTitle?: string;
+    targetRange?: string;
+    formatType?: 'colorScale' | 'dataBar' | 'iconSet';
     to?: string;
     subject?: string;
     body?: string;
@@ -215,9 +226,29 @@ export interface DetectedApp {
     connectionInfo?: Record<string, unknown>;
     windowTitle?: string;
 }
+export type HookControlMethod = 'chrome-extension' | 'browser-cdp' | 'electron-cdp' | 'office-com+uia' | 'qt-uia' | 'gtk-uia' | 'java-jab-uia' | 'flutter-uia' | 'win-uia';
+export interface FrameworkHookDescriptor {
+    id: HookControlMethod;
+    name: string;
+    frameworks: FrameworkType[];
+    integration: 'native' | 'bridge' | 'fallback';
+    protocol: string;
+    discoverySignals: string[];
+}
+export interface DirectApiConfig {
+    baseUrl: string;
+    headers?: Record<string, string>;
+    endpoints?: Partial<{
+        enumerate: string;
+        query: string;
+        act: string;
+        state: string;
+    }>;
+}
 export interface FrameworkPlugin {
     readonly framework: FrameworkType;
     readonly name: string;
+    readonly controlMethod: ControlMethod;
     canHandle(app: DetectedApp): boolean;
     connect(app: DetectedApp): Promise<PluginConnection>;
 }
@@ -231,7 +262,23 @@ export interface PluginConnection {
     subscribe(event: UABEventType, callback: UABEventCallback): Promise<Subscription>;
     disconnect(): Promise<void>;
 }
-export type ControlMethod = 'direct-api' | 'uab-hook' | 'accessibility' | 'vision';
+export type ControlMethod = HookControlMethod | 'direct-api' | 'vision';
+export type ConcertoMethod = ControlMethod | 'keyboard-native' | 'os-input-injection' | 'vision-analysis';
+export interface ConcertoMethodDescriptor {
+    id: ConcertoMethod;
+    name: string;
+    role: 'connection' | 'action' | 'verification';
+    speed: 'fastest' | 'fast' | 'moderate' | 'slow';
+    outcome: 'perfect' | 'high' | 'good' | 'variable';
+    control: 'precise' | 'broad' | 'spatial';
+    cost: 'free' | 'api';
+}
+export interface OperationPlan {
+    action: ActionType | 'describe';
+    primaryMethod: ConcertoMethod;
+    fallbackMethods: ConcertoMethod[];
+    rationale: string;
+}
 export interface ControlRoute {
     app: DetectedApp;
     method: ControlMethod;

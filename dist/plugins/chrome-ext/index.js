@@ -18,6 +18,7 @@ const BROWSER_PROCESSES = new Set([
 export class ChromeExtPlugin {
     framework = 'browser';
     name = 'Chrome Extension Bridge';
+    controlMethod = 'chrome-extension';
     wsServer;
     connections = new Map();
     constructor(wsServer) {

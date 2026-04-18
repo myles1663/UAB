@@ -8,9 +8,18 @@
  * Phase 3 Enhancement: Full DLL module scanning in detectAll() for
  * accurate framework detection across all running processes.
  */
-import type { DetectedApp } from './types.js';
+import type { DetectedApp, FrameworkType } from './types.js';
+export interface FrameworkSignature {
+    framework: FrameworkType;
+    modules: string[];
+    commandLine: string[];
+    filePatterns: string[];
+    baseConfidence: number;
+}
+export declare const DETECTION_SIGNATURES: FrameworkSignature[];
 export declare class FrameworkDetector {
     private cache;
+    getSignatureInventory(): FrameworkSignature[];
     /**
      * Detect all controllable apps with enhanced DLL module scanning.
      * Uses batch PowerShell calls for performance — scans loaded DLLs

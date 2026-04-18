@@ -304,7 +304,7 @@ This is the core of UAB. Five phases that transform a running desktop into a con
 │  After successful connection:                               │
 │                                                             │
 │  registry.update('excel.exe', {                             │
-│    preferredMethod: 'com+uia',  // This method worked!     │
+│    preferredMethod: 'office-com+uia', // Exact method won  │
 │    pid: 5678,                   // Update last known PID    │
 │    lastSeen: Date.now()         // Update timestamp         │
 │  });                                                        │
@@ -359,7 +359,7 @@ interface AppProfile {
   pid?: number;             // Last known PID (may be stale after restart)
   framework: FrameworkType; // Detected: "electron"
   confidence: number;       // 0.0-1.0 confidence score
-  preferredMethod?: string; // Learned: "cdp" (from successful connection)
+  preferredMethod?: string; // Learned: "browser-cdp", "office-com+uia", etc.
   connectionInfo?: object;  // Framework-specific: { debugPort: 9222 }
   path?: string;            // Full path: "C:\\...\\Code.exe"
   windowTitle?: string;     // Last seen: "project - Visual Studio Code"
@@ -406,43 +406,51 @@ The cascade is how UAB picks the best control method for each app. It's not just
 ### Priority Order
 
 ```
-Priority 1: Chrome Extension Bridge
+Priority 1: Direct API / local control endpoint
+   │   Used when the app exposes `connectionInfo.directApi`.
+   │   Coverage: Apps with an explicit JSON/HTTP control surface
+   │   fail
+   ▼
+Priority 2: Chrome Extension Bridge
    │   WebSocket to installed extension. No browser relaunch.
    │   Coverage: Any Chromium browser (Chrome, Edge, Brave)
    │   fail
    ▼
-Priority 2: CDP Browser Plugin
+Priority 3: CDP Browser Plugin
    │   Direct CDP WebSocket. Requires --remote-debugging-port.
    │   Coverage: Chromium browsers launched with debug flag
    │   fail
    ▼
-Priority 3: Framework-Specific Plugin
-   │   Electron CDP, Office COM, etc.
+Priority 4: Framework-Specific Plugin
+   │   Electron CDP, Office COM, and framework-aware hook wrappers.
    │   Coverage: Apps matching the plugin's framework
    │   fail
    ▼
-Priority 4: Windows UI Automation
+Priority 5: Windows UI Automation
    │   Accessibility API fallback. Works with ANY windowed Windows app.
    │   Coverage: Everything with a window
    │   fail
    ▼
-Priority 5: Vision (Screenshot + AI)
-   │   Last resort for element discovery. Screenshot → Claude Vision API → coordinate input.
-   │   Coverage: Anything visible on screen
-   │   (requires ANTHROPIC_API_KEY)
+Priority 6: Keyboard Native
+   │   Shortcuts, hotkeys, and SendKeys-based text input.
+   │   Coverage: Any focused window
    │   fail
    ▼
-Priority 6: OS Raw Input Injection
+Priority 7: OS Raw Input Injection
       SendInput() on Windows, CGEventPost() on macOS, xdotool on Linux.
       Injects mouse drag, scroll, and gesture events directly into the OS input stream.
       Coverage: ANY application — the app cannot distinguish injected input from human input.
       Used for: continuous spatial gestures (sculpting, painting, drawing, drag-and-drop)
       NOT used for: commands, menu navigation, text input (keyboard is faster/cheaper)
+      fail
+   ▼
+Vision Analysis
+      Screenshot → Claude Vision → verification / state reading / coordinate assistance.
 ```
 
 ### The Concerto Principle
 
-The cascade is NOT "pick one method per app." It's a concerto — for each micro-operation within a task, the agent picks the most efficient method. Efficiency means four things: **speed**, **outcome quality**, **control precision**, and **cost**.
+The cascade is NOT "pick one method per app." It's a concerto — for each micro-operation within a task, the runtime plans the most efficient method. Efficiency means four things: **speed**, **outcome quality**, **control precision**, and **cost**.
 
 A typical Blender sculpting session uses 5 methods in a single workflow:
 - **Keyboard** (P5): Ctrl+Tab to switch mode, Ctrl+4 to subdivide, F to resize brush
@@ -556,7 +564,7 @@ The router maps detected apps to control methods and manages the connection life
 ```typescript
 interface ControlRoute {
   app: DetectedApp;           // The detected app
-  method: ControlMethod;      // 'direct-api' | 'uab-hook' | 'accessibility' | 'vision'
+  method: ControlMethod;      // 'direct-api' | 'chrome-extension' | 'browser-cdp' | 'electron-cdp' | 'office-com+uia' | 'qt-uia' | 'gtk-uia' | 'java-jab-uia' | 'flutter-uia' | 'win-uia' | 'vision'
   connection: PluginConnection; // Active connection
   fallbacks: ControlMethod[];   // Remaining fallback methods
 }
@@ -622,18 +630,19 @@ interface PluginConnection {
 Plugins are registered in the `UABConnector.start()` method in strict priority order:
 
 ```
-1. ChromeExtPlugin   — Chrome extension bridge (WebSocket, no relaunch)
-2. BrowserPlugin     — Browser CDP (needs --remote-debugging-port)
-3. ElectronPlugin    — Electron CDP (framework hook)
-4. OfficePlugin      — COM + UIA hybrid (Word, Excel, PPT, Outlook)
-5. QtPlugin          — Qt via UIA bridge
-6. GtkPlugin         — GTK via UIA bridge
-7. JavaPlugin        — Java via JAB→UIA bridge
-8. FlutterPlugin     — Flutter via UIA bridge
-9. WinUIAPlugin      — Accessibility fallback (ALWAYS returns canHandle=true)
-10. VisionPlugin     — Vision fallback (screenshot + Claude Vision API + coordinate input)
-                        Last resort — expensive but truly universal.
-                        Only available when ANTHROPIC_API_KEY is configured.
+1. DirectApiPlugin   — Direct application endpoint (when `connectionInfo.directApi` exists)
+2. ChromeExtPlugin   — Chrome extension bridge (WebSocket, no relaunch)
+3. BrowserPlugin     — Browser CDP (needs --remote-debugging-port)
+4. ElectronPlugin    — Electron CDP (framework hook)
+5. OfficePlugin      — COM + UIA hybrid (Word, Excel, PPT, Outlook)
+6. QtPlugin          — Qt via UIA bridge
+7. GtkPlugin         — GTK via UIA bridge
+8. JavaPlugin        — Java via JAB→UIA bridge
+9. FlutterPlugin     — Flutter via UIA bridge
+10. WinUIAPlugin     — `win-uia` fallback (ALWAYS returns canHandle=true)
+11. VisionPlugin     — Vision fallback (screenshot + Claude Vision API + coordinate input)
+                         Last resort — expensive but truly universal.
+                         Only available when ANTHROPIC_API_KEY is configured.
 ```
 
 ### Plugin Details
@@ -757,7 +766,7 @@ UAB provides two API layers:
               └────────┬──────────┘
                        │
               ┌────────┴────────────┐
-              │  Registry Learning  │──▶ Update preferredMethod: 'com+uia'
+              │  Registry Learning  │──▶ Update preferredMethod: 'office-com+uia'
               └────────┬────────────┘
                        │
                        ▼

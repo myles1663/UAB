@@ -23,7 +23,7 @@ const SYSTEM_PROCESSES = new Set([
     'systemsettings.exe', 'lockapp.exe', 'searchapp.exe',
 ]);
 // ─── Framework signatures ──────────────────────────────────────
-const SIGNATURES = [
+export const DETECTION_SIGNATURES = [
     {
         framework: 'electron',
         modules: ['electron.exe', 'libcef.dll', 'chrome_elf.dll', 'v8.dll', 'electron.dll'],
@@ -385,7 +385,7 @@ function detectFramework(proc) {
     if (OFFICE_PROCESS_NAMES.has(nameLower)) {
         return { framework: 'office', confidence: 0.95 };
     }
-    for (const sig of SIGNATURES) {
+    for (const sig of DETECTION_SIGNATURES) {
         let score = 0;
         let matches = 0;
         for (const pattern of sig.commandLine) {
@@ -430,6 +430,15 @@ function detectFramework(proc) {
 // ─── Framework Detector Class ──────────────────────────────────
 export class FrameworkDetector {
     cache = new Map();
+    getSignatureInventory() {
+        return DETECTION_SIGNATURES.map(signature => ({
+            framework: signature.framework,
+            modules: [...signature.modules],
+            commandLine: [...signature.commandLine],
+            filePatterns: [...signature.filePatterns],
+            baseConfidence: signature.baseConfidence,
+        }));
+    }
     /**
      * Detect all controllable apps with enhanced DLL module scanning.
      * Uses batch PowerShell calls for performance — scans loaded DLLs

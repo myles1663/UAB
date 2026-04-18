@@ -175,6 +175,7 @@ async function waitForCDP(port, maxWaitMs = 15000) {
 export class BrowserPlugin {
     framework = 'browser';
     name = 'Browser (CDP)';
+    controlMethod = 'browser-cdp';
     canHandle(app) {
         return app.framework === 'browser';
     }
